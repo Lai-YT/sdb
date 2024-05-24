@@ -31,3 +31,12 @@
 *.out
 *.app
 sdb
+
+# Compilation Database
+compile_commands.json
+
+# clangd
+.cache/
+
+# GDB
+.gdb_history
