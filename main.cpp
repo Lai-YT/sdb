@@ -1,8 +1,7 @@
 #include <argp.h>
 #include <unistd.h>
 
-#include <cstdio>
-#include <cstdlib>
+#include "debugger.hpp"
 
 namespace {
 
@@ -20,11 +19,9 @@ int main(int argc, char* argv[]) {
   argp_parse(&argp, argc, argv, ARGP_IN_ORDER, 0, &args);
   // Noreturn on error.
 
-  if (args.program) {
-    execlp(args.program, /* argv[0] */ args.program, nullptr);
-    std::perror("execl");
-    std::exit(1);
-  }
+  auto dbg = Debugger{args.program};
+  dbg.Run();
+
   return 0;
 }
 
