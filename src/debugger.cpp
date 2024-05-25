@@ -2,24 +2,22 @@
 
 #include <capstone/capstone.h>
 #include <elf.h>
-#include <fcntl.h>
 #include <readline/history.h>
 #include <readline/readline.h>
-#include <sys/mman.h>
 #include <sys/ptrace.h>
-#include <sys/stat.h>
 #include <sys/user.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
-#include <cstring>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <string>
 #include <string_view>
 #include <vector>
 
