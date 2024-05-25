@@ -40,7 +40,8 @@ class Debugger {
   int StepOverBp_();
   /// @brief Set a breakpoint at the address.
   void Break_(std::uintptr_t addr);
-  void InfoRegs_();
+  void InfoRegs_() const;
+  void InfoBreaks_() const;
 
   //
   // Helper functions.

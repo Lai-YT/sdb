@@ -62,6 +62,8 @@ void Debugger::Run() {
       auto subcommand = args.at(1);
       if (subcommand == "reg") {
         InfoRegs_();
+      } else if (subcommand == "break") {
+        InfoBreaks_();
       } else {
         std::cout << "Unknown subcommand: " << subcommand << "\n";
       }
@@ -205,7 +207,7 @@ void Debugger::Break_(std::uintptr_t addr) {
   breakpoints_.emplace(bp_id, bp);
 }
 
-void Debugger::InfoRegs_() {
+void Debugger::InfoRegs_() const {
   struct user_regs_struct regs;
   if (ptrace(PTRACE_GETREGS, pid_, nullptr, &regs) < 0) {
     std::perror("ptrace");
@@ -224,6 +226,17 @@ void Debugger::InfoRegs_() {
   COUT_INFO(r15) << "\t"; COUT_INFO(rip) << "\t"; COUT_INFO(eflags) << "\n";
   // clang-format on
 #undef COUT_INFO
+}
+
+void Debugger::InfoBreaks_() const {
+  if (breakpoints_.empty()) {
+    std::cout << "** no breakpoints.\n";
+    return;
+  }
+  std::cout << "Num\tAddress\n";
+  for (const auto& [id, bp] : breakpoints_) {
+    std::cout << id << "\t0x" << std::hex << bp.addr() << "\n";
+  }
 }
 
 int Debugger::Wait_() {
