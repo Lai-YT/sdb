@@ -77,8 +77,7 @@ void Debugger::Load_() {
   } else {
     pid_ = pid;
     // Trapped at the first instruction.
-    if (waitpid(pid_, nullptr, 0) < 0) {
-      std::perror("waitpid");
+    if (Wait_() < 0) {
       return;
     }
     if (ptrace(PTRACE_SETOPTIONS, pid_, nullptr, PTRACE_O_EXITKILL) < 0) {
@@ -110,8 +109,7 @@ void Debugger::Step_() {
     std::perror("ptrace");
     return;
   }
-  if (waitpid(pid_, nullptr, 0) < 0) {
-    std::perror("waitpid");
+  if (Wait_() < 0) {
     return;
   }
   struct user_regs_struct regs;
@@ -127,8 +125,7 @@ void Debugger::Continue_() {
     std::perror("ptrace");
     return;
   }
-  if (waitpid(pid_, nullptr, 0) < 0) {
-    std::perror("waitpid");
+  if (Wait_() < 0) {
     return;
   }
   struct user_regs_struct regs;
@@ -158,6 +155,19 @@ void Debugger::InfoRegs_() {
   COUT_INFO(r15) << "\t"; COUT_INFO(rip) << "\t"; COUT_INFO(eflags) << "\n";
   // clang-format on
 #undef COUT_INFO
+}
+
+int Debugger::Wait_() const {
+  int status;
+  if (waitpid(pid_, &status, 0) < 0) {
+    std::perror("waitpid");
+    return -1;
+  }
+  if (WIFEXITED(status)) {
+    std::cout << "** the target program terminated.\n";
+    return -1;
+  }
+  return 0;
 }
 
 void Debugger::Disassemble_(std::uintptr_t addr, std::size_t insn_count) {

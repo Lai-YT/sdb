@@ -24,6 +24,12 @@ class Debugger {
   void Continue_();
   void InfoRegs_();
 
+  //
+  // Helper functions.
+  //
+
+  /// @return `-1` on error, or if the process has exited.
+  int Wait_() const;
   void Disassemble_(std::uintptr_t addr, std::size_t insn_count);
 };
 
