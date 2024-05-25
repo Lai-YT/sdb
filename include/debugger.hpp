@@ -3,6 +3,9 @@
 
 #include <sys/types.h>
 
+#include <cstddef>
+#include <cstdint>
+
 class Debugger {
  public:
   void Run();
@@ -11,9 +14,12 @@ class Debugger {
 
  private:
   const char* program_;
+  pid_t pid_{0};
 
   /// @note The program is executed as being traced.
   void Load_();
+
+  void Disassemble_(std::uintptr_t addr, std::size_t insn_count);
 };
 
 #endif  // DEBUGGER_HPP

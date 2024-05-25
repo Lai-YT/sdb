@@ -92,12 +92,13 @@ void Debugger::Load_() {
     std::perror("execl");
     std::exit(1);
   } else {
+    pid_ = pid;
     // Trapped at the first instruction.
-    if (waitpid(pid, nullptr, 0) < 0) {
+    if (waitpid(pid_, nullptr, 0) < 0) {
       std::perror("waitpid");
       return;
     }
-    if (ptrace(PTRACE_SETOPTIONS, pid, nullptr, PTRACE_O_EXITKILL) < 0) {
+    if (ptrace(PTRACE_SETOPTIONS, pid_, nullptr, PTRACE_O_EXITKILL) < 0) {
       std::perror("ptrace");
       return;
     }
@@ -126,51 +127,54 @@ void Debugger::Load_() {
 
     std::cout << "** program '" << program_ << "' loaded. entry point 0x"
               << std::hex << entry << ".\n";
-    csh handle;
-    if (cs_open(CS_ARCH_X86, CS_MODE_64, &handle) != CS_ERR_OK) {
-      std::perror("cs_open");
-      return;
-    }
-    constexpr auto kNumOfInsnToDisasm = std::size_t{5};
-    constexpr auto kMaxInsnSize = std::size_t{15};
-    std::uint8_t text[kMaxInsnSize * kNumOfInsnToDisasm] = {0};
-    for (auto i = std::size_t{0}; i < sizeof(text); ++i) {
-      text[i] = ptrace(PTRACE_PEEKTEXT, pid, entry + i, nullptr);
-    }
-    cs_insn* insn;
-    auto count =
-        cs_disasm(handle, text, sizeof(text), entry, kNumOfInsnToDisasm, &insn);
-    if (count == 0) {
-      std::cerr << "cs_disasm: " << cs_strerror(cs_errno(handle)) << "\n";
-      return;
-    }
-    // TODO: If the disassembled instructions are less than 5, output `** the
-    // address is out of the range of the text section.`
-    auto max_len = std::size_t{0};
-    for (auto i = std::size_t{0}; i < kNumOfInsnToDisasm; ++i) {
-      max_len = std::max(max_len, static_cast<std::size_t>(insn[i].size));
-    }
-    auto len = std::size_t{0};
-    for (auto i = std::size_t{0}; i < kNumOfInsnToDisasm; ++i) {
-      std::cout << "\t" << std::hex << insn[i].address << ": ";
-      for (auto j = std::size_t{0}; j < insn[i].size; ++j) {
-        // XXX: Using insn[i].bytes[j] shows garbled output.
-        std::cout << std::setfill('0') << std::setw(2) << std::hex
-                  << static_cast<int>(text[len++]) << " ";
-      }
-      // A tab is usually 8 spaces wide. Every two bytes are separated by a
-      // space. Thus, the longest instruction is (max_len + max_len / 2) spaces
-      // wide. And the current instruction is (insn[i].size + insn[i].size / 2)
-      // spaces wide. The required extra padding is the ceiling of ((max_len +
-      // max_len / 2) - (insn[i].size + insn[i].size / 2)) / 8
-      auto padding =
-          ((max_len + max_len / 2 - insn[i].size - insn[i].size / 2) + 7) / 8;
-
-      std::cout << std::string(padding + 1 /* at least one tab */, '\t')
-                << insn[i].mnemonic << "\t" << insn[i].op_str << "\n";
-    }
-    cs_free(insn, count);
+    Disassemble_(entry, 5);
   }
+}
+
+void Debugger::Disassemble_(std::uintptr_t addr, std::size_t insn_count) {
+  csh handle;
+  if (cs_open(CS_ARCH_X86, CS_MODE_64, &handle) != CS_ERR_OK) {
+    std::perror("cs_open");
+    return;
+  }
+  constexpr auto kMaxInsnSize = std::size_t{15};
+  auto text = std::vector<std::uint8_t>(kMaxInsnSize * insn_count);
+  for (auto i = std::size_t{0}; i < sizeof(text); ++i) {
+    text[i] = ptrace(PTRACE_PEEKTEXT, pid_, addr + i, nullptr);
+  }
+  cs_insn* insn;
+  auto count =
+      cs_disasm(handle, text.data(), text.size(), addr, insn_count, &insn);
+  if (count == 0) {
+    std::cerr << "cs_disasm: " << cs_strerror(cs_errno(handle)) << "\n";
+    return;
+  }
+  // TODO: If the disassembled instructions are less than 5, output `** the
+  // address is out of the range of the text section.`
+  auto max_len = std::size_t{0};
+  for (auto i = std::size_t{0}; i < insn_count; ++i) {
+    max_len = std::max(max_len, static_cast<std::size_t>(insn[i].size));
+  }
+  auto len = std::size_t{0};
+  for (auto i = std::size_t{0}; i < insn_count; ++i) {
+    std::cout << "\t" << std::hex << insn[i].address << ": ";
+    for (auto j = std::size_t{0}; j < insn[i].size; ++j) {
+      // XXX: Using insn[i].bytes[j] shows garbled output.
+      std::cout << std::setfill('0') << std::setw(2) << std::hex
+                << static_cast<int>(text[len++]) << " ";
+    }
+    // A tab is usually 8 spaces wide. Every two bytes are separated by a
+    // space. Thus, the longest instruction is (max_len + max_len / 2) spaces
+    // wide. And the current instruction is (insn[i].size + insn[i].size / 2)
+    // spaces wide. The required extra padding is the ceiling of ((max_len +
+    // max_len / 2) - (insn[i].size + insn[i].size / 2)) / 8
+    auto padding =
+        ((max_len + max_len / 2 - insn[i].size - insn[i].size / 2) + 7) / 8;
+
+    std::cout << std::string(padding + 1 /* at least one tab */, '\t')
+              << insn[i].mnemonic << "\t" << insn[i].op_str << "\n";
+  }
+  cs_free(insn, count);
 }
 
 namespace {
