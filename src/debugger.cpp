@@ -4,6 +4,7 @@
 #include <elf.h>
 #include <readline/history.h>
 #include <readline/readline.h>
+#include <signal.h>
 #include <sys/ptrace.h>
 #include <sys/user.h>
 #include <sys/wait.h>
@@ -20,6 +21,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
