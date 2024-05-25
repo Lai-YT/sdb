@@ -113,6 +113,11 @@ void Debugger::Load_() {
 }
 
 void Debugger::Step_() {
+  auto status = StepOverBp_();
+  if (status <= 0) {
+    return;
+  }
+  // Not at a breakpoint.
   if (ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr) < 0) {
     std::perror("ptrace");
     return;
@@ -148,24 +153,39 @@ void Debugger::Continue_() {
 }
 
 int Debugger::StepOverBp_() {
+  auto rip = GetRip_();
+  if (rip < 0) {
+    return -1;
+  }
   // The interrupt instruction (1-byte) is still a instruction, thus it's
   // executed with the PC incremented. We get the original address of the
   // breakpoint by subtracting 1.
-  auto break_addr = GetRip_() - 1;
-  if (breakpoints_.count(break_addr)) {
+  auto break_addr = rip - 1;
+  auto bp_itr = breakpoints_.find(break_addr);
+  if (bp_itr != breakpoints_.end() && bp_itr->second.IsEnabled() &&
+      !bp_itr->second.IsHit()) {
+    std::cerr << "** stepping over a breakpoint at 0x" << std::hex << break_addr
+              << ".\n";
     auto& bp = breakpoints_.at(break_addr);
-    if (bp.IsEnabled()) {
-      bp.Disable();
-      SetRip_(break_addr);
-      ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr);
-      if (Wait_() < 0) {
-        return -1;
-      }
-      // So that we get trapped next time.
-      bp.Enable();
+    bp.Disable();
+    if (SetRip_(break_addr)) {
+      return -1;
     }
+    ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr);
+    if (Wait_() < 0) {
+      return -1 /* error of the process has exited */;
+    }
+    // So that we get trapped next time.
+    bp.Enable();
+    return 0 /* successfully stepped over a breakpoint */;
+  } else if (bp_itr != breakpoints_.end() && bp_itr->second.IsEnabled() &&
+             bp_itr->second.IsHit()) {
+    // Set it as not hit, so that it can be hit again.
+    bp_itr->second.Unhit();
+    // A hit breakpoint is not a breakpoint this time.
+    return 1 /* not at a breakpoint */;
   }
-  return 0;
+  return 1 /* not at a breakpoint */;
 }
 
 void Debugger::Break_(std::uintptr_t addr) {
@@ -196,7 +216,7 @@ void Debugger::InfoRegs_() {
 #undef COUT_INFO
 }
 
-int Debugger::Wait_() const {
+int Debugger::Wait_() {
   int status;
   if (waitpid(pid_, &status, 0) < 0) {
     std::perror("waitpid");
@@ -213,8 +233,11 @@ int Debugger::Wait_() const {
     }
     // Since the interrupt instruction is executed, the breakpoint is the one
     // before the current PC.
-    if (breakpoints_.count(rip - 1)) {
+    if (auto bp_itr = breakpoints_.find(rip - 1);
+        bp_itr != breakpoints_.end() && bp_itr->second.IsEnabled() &&
+        !bp_itr->second.IsHit()) {
       std::cout << "** hit a breakpoint at 0x" << std::hex << rip - 1 << ".\n";
+      bp_itr->second.Hit();
     }
   }
   return 0;

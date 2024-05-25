@@ -24,4 +24,5 @@ void Breakpoint::Disable() {
   auto restored_data = ((data & ~0xff) | saved_data_);
   ptrace(PTRACE_POKEDATA, pid_, addr_, restored_data);
   enabled_ = false;
+  Unhit();
 }
