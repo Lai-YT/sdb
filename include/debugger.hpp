@@ -18,7 +18,14 @@ class Debugger {
  private:
   const char* program_;
   pid_t pid_{0};
-  std::unordered_map<std::uintptr_t, Breakpoint> breakpoints_;
+  /// @note Giving each breakpoint a unique id to support easy deletion.
+  std::unordered_map<int, Breakpoint> breakpoints_;
+  /// @note Do not access this directly; use `NextBreakpointId_()` instead.
+  int breakpoint_id_{0};
+  int NextBreakpointId_();
+  /// @note Maps the address to the breakpoint id.
+  /// @note Incremented for each "user-created" breakpoint.
+  std::unordered_map<std::uintptr_t, int> addr_to_breakpoint_id_;
 
   /// @note The program is executed as being traced.
   void Load_();

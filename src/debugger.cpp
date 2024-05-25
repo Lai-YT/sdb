@@ -28,6 +28,10 @@ namespace {
 std::vector<std::string> Split(std::string_view s, char delimiter);
 }  // namespace
 
+int Debugger::NextBreakpointId_() {
+  return breakpoint_id_++;
+}
+
 void Debugger::Run() {
   if (program_) {
     Load_();
@@ -163,12 +167,16 @@ int Debugger::StepOverBp_() {
   // executed with the PC incremented. We get the original address of the
   // breakpoint by subtracting 1.
   auto break_addr = static_cast<std::uintptr_t>(rip - 1);
-  if (auto bp_itr = breakpoints_.find(break_addr);
+  if (!addr_to_breakpoint_id_.count(break_addr)) {
+    return 1 /* not at a breakpoint */;
+  }
+  auto bp_id = addr_to_breakpoint_id_.at(break_addr);
+  if (auto bp_itr = breakpoints_.find(bp_id);
       bp_itr != breakpoints_.end() && !bp_itr->second.IsHit()) {
     std::cerr << "** stepping over a breakpoint at 0x" << std::hex << break_addr
               << ".\n";
-    breakpoints_.at(break_addr).Delete();
-    breakpoints_.erase(break_addr);
+    breakpoints_.at(bp_id).Delete();
+    breakpoints_.erase(bp_id);
     if (SetRip_(break_addr)) {
       return -1;
     }
@@ -177,7 +185,8 @@ int Debugger::StepOverBp_() {
       return -1 /* error of the process has exited */;
     }
     // So that we get trapped next time.
-    breakpoints_.emplace(break_addr, Breakpoint{pid_, break_addr});
+    // Notice that the id is reused, so has no impact to the user.
+    breakpoints_.emplace(bp_id, Breakpoint{pid_, break_addr});
     return 0 /* successfully stepped over a breakpoint */;
   } else if (bp_itr != breakpoints_.end() && bp_itr->second.IsHit()) {
     // Set it as not hit, so that it can be hit again.
@@ -191,7 +200,9 @@ int Debugger::StepOverBp_() {
 void Debugger::Break_(std::uintptr_t addr) {
   std::cout << "** set a breakpoint at 0x" << std::hex << addr << ".\n";
   auto bp = Breakpoint{pid_, addr};
-  breakpoints_.emplace(addr, bp);
+  auto bp_id = NextBreakpointId_();
+  addr_to_breakpoint_id_.emplace(addr, bp_id);
+  breakpoints_.emplace(bp_id, bp);
 }
 
 void Debugger::InfoRegs_() {
@@ -232,7 +243,12 @@ int Debugger::Wait_() {
     }
     // Since the interrupt instruction is executed, the breakpoint is the one
     // before the current PC.
-    if (auto bp_itr = breakpoints_.find(rip - 1);
+    if (!addr_to_breakpoint_id_.count(rip - 1)) {
+      // Likey to be trapped an orginal trap in the program.
+      return 0;
+    }
+    auto bp_id = addr_to_breakpoint_id_.at(rip - 1);
+    if (auto bp_itr = breakpoints_.find(bp_id);
         bp_itr != breakpoints_.end() && !bp_itr->second.IsHit()) {
       std::cout << "** hit a breakpoint at 0x" << std::hex << rip - 1 << ".\n";
       bp_itr->second.Hit();
