@@ -1,6 +1,6 @@
 CXX ?= g++
 CXXFLAGS ?= -std=c++17 -Wall -Wextra -pedantic -O3 -g -Iinclude
-LDFLAGS ?= -lreadline
+LDFLAGS ?= -lreadline -lcapstone
 
 SRC = $(wildcard src/*.cpp)
 OBJ = $(SRC:.cpp=.o)
