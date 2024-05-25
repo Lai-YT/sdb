@@ -68,6 +68,8 @@ void Debugger::Run() {
       auto program = args.at(1);
       program_ = program.c_str();
       Load_();
+    } else if (command == "si") {
+      Step_();
     } else {
       std::cout << "Unknown command: " << command << "\n";
     }
@@ -129,6 +131,23 @@ void Debugger::Load_() {
               << std::hex << entry << ".\n";
     Disassemble_(entry, 5);
   }
+}
+
+void Debugger::Step_() {
+  if (ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr) < 0) {
+    std::perror("ptrace");
+    return;
+  }
+  if (waitpid(pid_, nullptr, 0) < 0) {
+    std::perror("waitpid");
+    return;
+  }
+  struct user_regs_struct regs;
+  if (ptrace(PTRACE_GETREGS, pid_, nullptr, &regs) < 0) {
+    std::perror("ptrace");
+    return;
+  }
+  Disassemble_(regs.rip, 5);
 }
 
 void Debugger::Disassemble_(std::uintptr_t addr, std::size_t insn_count) {

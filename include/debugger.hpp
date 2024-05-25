@@ -18,6 +18,8 @@ class Debugger {
 
   /// @note The program is executed as being traced.
   void Load_();
+  /// @brief Single step the program.
+  void Step_();
 
   void Disassemble_(std::uintptr_t addr, std::size_t insn_count);
 };
