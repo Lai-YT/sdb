@@ -17,6 +17,7 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -42,6 +43,13 @@ void Debugger::Run() {
       Load_();
     } else if (command == "cont") {
       Continue_();
+    } else if (command == "break") {
+      try {
+        auto addr = std::stoul(args.at(1), nullptr, 16);
+        Break_(addr);
+      } catch (const std::invalid_argument& e) {
+        std::cout << "Invalid address: " << args.at(1) << "\n";
+      }
     } else if (command == "si") {
       Step_();
     } else if (command == "info") {
@@ -136,6 +144,13 @@ void Debugger::Continue_() {
   Disassemble_(regs.rip, 5);
 }
 
+void Debugger::Break_(std::uintptr_t addr) {
+  std::cout << "** set a breakpoint at 0x" << std::hex << addr << ".\n";
+  auto bp = Breakpoint{pid_, addr};
+  bp.Enable();
+  breakpoints_.emplace(addr, bp);
+}
+
 void Debugger::InfoRegs_() {
   struct user_regs_struct regs;
   if (ptrace(PTRACE_GETREGS, pid_, nullptr, &regs) < 0) {
@@ -166,6 +181,17 @@ int Debugger::Wait_() const {
   if (WIFEXITED(status)) {
     std::cout << "** the target program terminated.\n";
     return -1;
+  }
+  if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGTRAP) {
+    auto rip = GetRip_();
+    if (rip < 0) {
+      return -1;
+    }
+    // Since the interrupt instruction is executed, the breakpoint is the one
+    // before the current PC.
+    if (breakpoints_.count(rip - 1)) {
+      std::cout << "** hit a breakpoint at 0x" << std::hex << rip - 1 << ".\n";
+    }
   }
   return 0;
 }

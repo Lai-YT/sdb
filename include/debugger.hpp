@@ -5,6 +5,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <unordered_map>
+
+#include "breakpoint.hpp"
 
 class Debugger {
  public:
@@ -15,6 +18,7 @@ class Debugger {
  private:
   const char* program_;
   pid_t pid_{0};
+  std::unordered_map<std::uintptr_t, Breakpoint> breakpoints_;
 
   /// @note The program is executed as being traced.
   void Load_();
@@ -22,6 +26,8 @@ class Debugger {
   void Step_();
   /// @brief Continue the program.
   void Continue_();
+  /// @brief Set a breakpoint at the address.
+  void Break_(std::uintptr_t addr);
   void InfoRegs_();
 
   //
