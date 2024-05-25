@@ -70,6 +70,13 @@ void Debugger::Run() {
       Load_();
     } else if (command == "si") {
       Step_();
+    } else if (command == "info") {
+      auto subcommand = args.at(1);
+      if (subcommand == "reg") {
+        InfoRegs_();
+      } else {
+        std::cout << "Unknown subcommand: " << subcommand << "\n";
+      }
     } else {
       std::cout << "Unknown command: " << command << "\n";
     }
@@ -148,6 +155,27 @@ void Debugger::Step_() {
     return;
   }
   Disassemble_(regs.rip, 5);
+}
+
+void Debugger::InfoRegs_() {
+  struct user_regs_struct regs;
+  if (ptrace(PTRACE_GETREGS, pid_, nullptr, &regs) < 0) {
+    std::perror("ptrace");
+    return;
+  }
+// Output 3 registers per line.
+#define COUT_INFO(reg) \
+  std::cout << "$" << #reg << "\t0x" << std::setfill('0') << std::setw(16) \
+            << std::hex << regs.reg
+  // clang-format off
+  COUT_INFO(rax) << "\t"; COUT_INFO(rbx) << "\t"; COUT_INFO(rcx) << "\n";
+  COUT_INFO(rdx) << "\t"; COUT_INFO(rsi) << "\t"; COUT_INFO(rdi) << "\n";
+  COUT_INFO(rbp) << "\t"; COUT_INFO(rsp) << "\t"; COUT_INFO(r8) << "\n";
+  COUT_INFO(r9)  << "\t"; COUT_INFO(r10) << "\t"; COUT_INFO(r11) << "\n";
+  COUT_INFO(r12) << "\t"; COUT_INFO(r13) << "\t"; COUT_INFO(r14) << "\n";
+  COUT_INFO(r15) << "\t"; COUT_INFO(rip) << "\t"; COUT_INFO(eflags) << "\n";
+  // clang-format on
+#undef COUT_INFO
 }
 
 void Debugger::Disassemble_(std::uintptr_t addr, std::size_t insn_count) {
