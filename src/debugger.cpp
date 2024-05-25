@@ -160,14 +160,13 @@ int Debugger::StepOverBp_() {
   // The interrupt instruction (1-byte) is still a instruction, thus it's
   // executed with the PC incremented. We get the original address of the
   // breakpoint by subtracting 1.
-  auto break_addr = rip - 1;
-  auto bp_itr = breakpoints_.find(break_addr);
-  if (bp_itr != breakpoints_.end() && bp_itr->second.IsEnabled() &&
-      !bp_itr->second.IsHit()) {
+  auto break_addr = static_cast<std::uintptr_t>(rip - 1);
+  if (auto bp_itr = breakpoints_.find(break_addr);
+      bp_itr != breakpoints_.end() && !bp_itr->second.IsHit()) {
     std::cerr << "** stepping over a breakpoint at 0x" << std::hex << break_addr
               << ".\n";
-    auto& bp = breakpoints_.at(break_addr);
-    bp.Disable();
+    breakpoints_.at(break_addr).Delete();
+    breakpoints_.erase(break_addr);
     if (SetRip_(break_addr)) {
       return -1;
     }
@@ -176,10 +175,9 @@ int Debugger::StepOverBp_() {
       return -1 /* error of the process has exited */;
     }
     // So that we get trapped next time.
-    bp.Enable();
+    breakpoints_.emplace(break_addr, Breakpoint{pid_, break_addr});
     return 0 /* successfully stepped over a breakpoint */;
-  } else if (bp_itr != breakpoints_.end() && bp_itr->second.IsEnabled() &&
-             bp_itr->second.IsHit()) {
+  } else if (bp_itr != breakpoints_.end() && bp_itr->second.IsHit()) {
     // Set it as not hit, so that it can be hit again.
     bp_itr->second.Unhit();
     // A hit breakpoint is not a breakpoint this time.
@@ -191,7 +189,6 @@ int Debugger::StepOverBp_() {
 void Debugger::Break_(std::uintptr_t addr) {
   std::cout << "** set a breakpoint at 0x" << std::hex << addr << ".\n";
   auto bp = Breakpoint{pid_, addr};
-  bp.Enable();
   breakpoints_.emplace(addr, bp);
 }
 
@@ -234,8 +231,7 @@ int Debugger::Wait_() {
     // Since the interrupt instruction is executed, the breakpoint is the one
     // before the current PC.
     if (auto bp_itr = breakpoints_.find(rip - 1);
-        bp_itr != breakpoints_.end() && bp_itr->second.IsEnabled() &&
-        !bp_itr->second.IsHit()) {
+        bp_itr != breakpoints_.end() && !bp_itr->second.IsHit()) {
       std::cout << "** hit a breakpoint at 0x" << std::hex << rip - 1 << ".\n";
       bp_itr->second.Hit();
     }
@@ -243,7 +239,7 @@ int Debugger::Wait_() {
   return 0;
 }
 
-std::int64_t Debugger::GetRip_() const {
+std::intptr_t Debugger::GetRip_() const {
   struct user_regs_struct regs;
   if (ptrace(PTRACE_GETREGS, pid_, nullptr, &regs) < 0) {
     std::perror("ptrace");

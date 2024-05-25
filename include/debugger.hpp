@@ -42,7 +42,7 @@ class Debugger {
   /// @return `-1` on error, or if the process has exited.
   int Wait_();
   /// @return The register value. `-1` on error.
-  std::int64_t GetRip_() const;
+  std::intptr_t GetRip_() const;
   int SetRip_(std::uintptr_t rip);
   void Disassemble_(std::uintptr_t addr, std::size_t insn_count);
 };
