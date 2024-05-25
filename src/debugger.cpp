@@ -16,41 +16,15 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <memory>
 #include <sstream>
 #include <string_view>
 #include <vector>
 
 namespace {
 std::vector<std::string> Split(std::string_view s, char delimiter);
-
-/// @note We are only interested in the symbol table.
-struct ElfSymTab {
-  /// @brief Start of the mapped ELF binary segment.
-  /// @note This is also the start of ELF header.
-  void* maddr = MAP_FAILED;
-  /// @brief Size of the mapped ELF binary segment.
-  std::size_t msize = 0;
-  /// @brief Start of the ELF header.
-  /// @note This is the same as `maddr`.
-  Elf64_Ehdr* ehdr = nullptr;
-  /// @brief Start of the symbol table.
-  Elf64_Sym* symtab = nullptr;
-  /// @brief End of the symbol table.
-  Elf64_Sym* symtab_end = nullptr;
-  /// @brief Start of the string table.
-  char* strtab = nullptr;
-
-  ~ElfSymTab() {
-    if (maddr != MAP_FAILED) {
-      munmap(maddr, msize);
-    }
-  }
-
-  static std::unique_ptr<ElfSymTab> From(const char* file);
-};
 }  // namespace
 
 void Debugger::Run() {
@@ -113,30 +87,21 @@ void Debugger::Load_() {
     }
 
     // Show some information about the program.
-    // (1) The entry point address (the main function, not the _start).
+    // (1) The entry point address.
     // (2) The first 5 instructions.
     // NOTE: Make sure the tracee is stopped before reading its memory.
 
-    auto esymtab = ElfSymTab::From(program_);
-    if (!esymtab) {
+    auto file = std::ifstream{program_};
+    if (!file) {
+      std::perror("open");
       return;
     }
-    // Traverse the symbol table to find the entry point.
-    std::uintptr_t entry = 0;
-    for (auto sym = esymtab->symtab; sym < esymtab->symtab_end; ++sym) {
-      if (std::strcmp(esymtab->strtab + sym->st_name, "main") == 0) {
-        entry = sym->st_value;
-        break;
-      }
-    }
-    if (!entry) {
-      std::cerr << "Cannot find the entry point.\n";
-      return;
-    }
-
+    auto header = Elf64_Ehdr{};
+    file.read(reinterpret_cast<char*>(&header), sizeof(header));
     std::cout << "** program '" << program_ << "' loaded. entry point 0x"
-              << std::hex << entry << ".\n";
-    Disassemble_(entry, 5);
+              << std::hex << header.e_entry << ".\n";
+
+    Disassemble_(header.e_entry, 5);
   }
 }
 
@@ -233,65 +198,5 @@ std::vector<std::string> Split(std::string_view s, char delimiter) {
     tokens.push_back(token);
   }
   return tokens;
-}
-
-std::unique_ptr<ElfSymTab> ElfSymTab::From(const char* file) {
-  // NOTE: The following code on reading ELF symbols is modified from
-  // https://www.cs.cmu.edu/afs/cs.cmu.edu/academic/class/15213-f03/www/ftrace/elf.h
-  // https://www.cs.cmu.edu/afs/cs.cmu.edu/academic/class/15213-f03/www/ftrace/elf.c
-
-  // Do some consistency checks on the binary.
-  auto fd = open(file, O_RDONLY);
-  if (fd < 0) {
-    std::perror("open");
-    return nullptr;
-  }
-  struct stat sbuf;
-  if (fstat(fd, &sbuf) < 0) {
-    std::perror("fstat");
-    return nullptr;
-  }
-  if (sbuf.st_size < static_cast<long>(sizeof(Elf64_Ehdr))) {
-    std::cerr << "Invalid ELF file.\n";
-    return nullptr;
-  }
-
-  // It looks OK, so map the ELF binary into our address space.
-  auto esymtab = std::make_unique<ElfSymTab>();
-  esymtab->maddr = mmap(nullptr, sbuf.st_size, PROT_READ, MAP_SHARED, fd, 0);
-  if (esymtab->maddr == MAP_FAILED) {
-    std::perror("mmap");
-    return nullptr;
-  }
-  close(fd);
-
-  // Make sure it's an ELF file.
-  esymtab->ehdr = static_cast<Elf64_Ehdr*>(esymtab->maddr);
-  if (std::strncmp(reinterpret_cast<const char*>(esymtab->ehdr->e_ident),
-                   ELFMAG, SELFMAG) != 0) {
-    std::cerr << "Invalid ELF file.\n";
-    return nullptr;
-  }
-
-  // Now we can find the symbol table.
-  auto shdr = reinterpret_cast<Elf64_Shdr*>(
-      reinterpret_cast<std::uint8_t*>(esymtab->maddr) + esymtab->ehdr->e_shoff);
-  for (auto i = std::size_t{0}; i < esymtab->ehdr->e_shnum; ++i) {
-    if (shdr[i].sh_type == SHT_SYMTAB) {
-      esymtab->symtab = reinterpret_cast<Elf64_Sym*>(
-          reinterpret_cast<std::uint8_t*>(esymtab->maddr) + shdr[i].sh_offset);
-      esymtab->symtab_end = reinterpret_cast<Elf64_Sym*>(
-          reinterpret_cast<std::uint8_t*>(esymtab->symtab) + shdr[i].sh_size);
-      esymtab->strtab = reinterpret_cast<char*>(
-          reinterpret_cast<std::uint8_t*>(esymtab->maddr) +
-          shdr[shdr[i].sh_link].sh_offset);
-      break;
-    }
-  }
-  if (!esymtab->symtab) {
-    std::cerr << "No symbol table found.\n";
-    return nullptr;
-  }
-  return esymtab;
 }
 }  // namespace
