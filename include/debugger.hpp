@@ -26,6 +26,10 @@ class Debugger {
   void Step_();
   /// @brief Continue the program.
   void Continue_();
+  /// @brief If the program is stopped at a breakpoint, Single step the program
+  /// with the original instruction.
+  /// @return `-1` on error, or if the process has exited.
+  int StepOverBp_();
   /// @brief Set a breakpoint at the address.
   void Break_(std::uintptr_t addr);
   void InfoRegs_();
@@ -36,6 +40,9 @@ class Debugger {
 
   /// @return `-1` on error, or if the process has exited.
   int Wait_() const;
+  /// @return The register value. `-1` on error.
+  std::int64_t GetRip_() const;
+  int SetRip_(std::uintptr_t rip);
   void Disassemble_(std::uintptr_t addr, std::size_t insn_count);
 };
 

@@ -129,6 +129,9 @@ void Debugger::Step_() {
 }
 
 void Debugger::Continue_() {
+  if (StepOverBp_() < 0) {
+    return;
+  }
   if (ptrace(PTRACE_CONT, pid_, nullptr, nullptr) < 0) {
     std::perror("ptrace");
     return;
@@ -142,6 +145,27 @@ void Debugger::Continue_() {
     return;
   }
   Disassemble_(regs.rip, 5);
+}
+
+int Debugger::StepOverBp_() {
+  // The interrupt instruction (1-byte) is still a instruction, thus it's
+  // executed with the PC incremented. We get the original address of the
+  // breakpoint by subtracting 1.
+  auto break_addr = GetRip_() - 1;
+  if (breakpoints_.count(break_addr)) {
+    auto& bp = breakpoints_.at(break_addr);
+    if (bp.IsEnabled()) {
+      bp.Disable();
+      SetRip_(break_addr);
+      ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr);
+      if (Wait_() < 0) {
+        return -1;
+      }
+      // So that we get trapped next time.
+      bp.Enable();
+    }
+  }
+  return 0;
 }
 
 void Debugger::Break_(std::uintptr_t addr) {
@@ -192,6 +216,29 @@ int Debugger::Wait_() const {
     if (breakpoints_.count(rip - 1)) {
       std::cout << "** hit a breakpoint at 0x" << std::hex << rip - 1 << ".\n";
     }
+  }
+  return 0;
+}
+
+std::int64_t Debugger::GetRip_() const {
+  struct user_regs_struct regs;
+  if (ptrace(PTRACE_GETREGS, pid_, nullptr, &regs) < 0) {
+    std::perror("ptrace");
+    return -1;
+  }
+  return regs.rip;
+}
+
+int Debugger::SetRip_(std::uintptr_t rip) {
+  struct user_regs_struct regs;
+  if (ptrace(PTRACE_GETREGS, pid_, nullptr, &regs) < 0) {
+    std::perror("ptrace");
+    return -1;
+  }
+  regs.rip = rip;
+  if (ptrace(PTRACE_SETREGS, pid_, nullptr, &regs) < 0) {
+    std::perror("ptrace");
+    return -1;
   }
   return 0;
 }
