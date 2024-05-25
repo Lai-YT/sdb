@@ -42,6 +42,8 @@ void Debugger::Run() {
       auto program = args.at(1);
       program_ = program.c_str();
       Load_();
+    } else if (command == "cont") {
+      Continue_();
     } else if (command == "si") {
       Step_();
     } else if (command == "info") {
@@ -107,6 +109,23 @@ void Debugger::Load_() {
 
 void Debugger::Step_() {
   if (ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr) < 0) {
+    std::perror("ptrace");
+    return;
+  }
+  if (waitpid(pid_, nullptr, 0) < 0) {
+    std::perror("waitpid");
+    return;
+  }
+  struct user_regs_struct regs;
+  if (ptrace(PTRACE_GETREGS, pid_, nullptr, &regs) < 0) {
+    std::perror("ptrace");
+    return;
+  }
+  Disassemble_(regs.rip, 5);
+}
+
+void Debugger::Continue_() {
+  if (ptrace(PTRACE_CONT, pid_, nullptr, nullptr) < 0) {
     std::perror("ptrace");
     return;
   }

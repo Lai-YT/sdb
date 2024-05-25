@@ -20,6 +20,8 @@ class Debugger {
   void Load_();
   /// @brief Single step the program.
   void Step_();
+  /// @brief Continue the program.
+  void Continue_();
   void InfoRegs_();
 
   void Disassemble_(std::uintptr_t addr, std::size_t insn_count);
