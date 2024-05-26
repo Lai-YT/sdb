@@ -40,7 +40,7 @@ class Debugger {
   //
 
   /// @note The program is executed as being traced.
-  void Load_();
+  void Load_(const char* program);
   /// @brief Single step the program.
   void Step_();
   /// @brief Continue the program.

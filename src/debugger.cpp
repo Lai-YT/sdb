@@ -32,7 +32,7 @@ int Debugger::NextBreakpointId_() {
 
 void Debugger::Run() {
   if (program_) {
-    Load_();
+    Load_(program_);
   }
   char* line = nullptr;
   while ((line = readline("(sbg) "))) {
@@ -43,8 +43,7 @@ void Debugger::Run() {
     auto command = args.at(0);
     if (command == "load") {
       auto program = args.at(1);
-      program_ = program.c_str();
-      Load_();
+      Load_(program.c_str());
     } else if (command == "cont") {
       if (CheckHasLoaded_() < 0) {
         continue;
@@ -96,7 +95,8 @@ void Debugger::Run() {
   std::cout << "Quit\n";
 }
 
-void Debugger::Load_() {
+void Debugger::Load_(const char* program) {
+  program_ = program;
   auto pid = fork();
   if (pid < 0) {
     std::perror("fork");
