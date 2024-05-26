@@ -1,7 +1,6 @@
 #include "debugger.hpp"
 
 #include <capstone/capstone.h>
-#include <elf.h>
 #include <readline/history.h>
 #include <readline/readline.h>
 #include <signal.h>
@@ -14,7 +13,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -100,7 +98,7 @@ void Debugger::Load_() {
     std::exit(1);
   } else {
     pid_ = pid;
-    // Trapped at the first instruction.
+    // Trapped at the first instruction (entry point).
     if (Wait_() < 0) {
       return;
     }
@@ -114,17 +112,14 @@ void Debugger::Load_() {
     // (2) The first 5 instructions.
     // NOTE: Make sure the tracee is stopped before reading its memory.
 
-    auto file = std::ifstream{program_};
-    if (!file) {
-      std::perror("open");
+    auto entry_point = GetRip_();
+    if (entry_point < 0) {
       return;
     }
-    auto header = Elf64_Ehdr{};
-    file.read(reinterpret_cast<char*>(&header), sizeof(header));
     std::cout << "** program '" << program_ << "' loaded. entry point 0x"
-              << std::hex << header.e_entry << ".\n";
+              << std::hex << entry_point << ".\n";
 
-    Disassemble_(header.e_entry, 5);
+    Disassemble_(entry_point, 5);
   }
 }
 
