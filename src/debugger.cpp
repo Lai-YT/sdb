@@ -178,6 +178,23 @@ int Debugger::StepOverBp_() {
   // breakpoint by subtracting 1.
   auto break_addr = static_cast<std::uintptr_t>(rip - 1);
   if (!addr_to_breakpoint_id_.count(break_addr)) {
+    // If we have postponed breakpoints, step over them silently and set them.
+    if (!postponed_breakpoints_.empty()) {
+      ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr);
+      if (Wait_() < 0) {
+        return -1 /* error or the process has exited */;
+      }
+      for (auto i = std::size_t{0}, e = postponed_breakpoints_.size(); i < e;
+           ++i) {
+        auto addr = postponed_breakpoints_.front();
+        postponed_breakpoints_.pop();
+        auto bp = Breakpoint{pid_, addr};
+        auto bp_id = NextBreakpointId_();
+        addr_to_breakpoint_id_.emplace(addr, bp_id);
+        breakpoints_.emplace(bp_id, std::move(bp));
+      }
+      return 0 /* successfully stepped over a breakpoint */;
+    }
     return 1 /* not at a breakpoint */;
   }
   auto bp_id = addr_to_breakpoint_id_.at(break_addr);
@@ -192,7 +209,7 @@ int Debugger::StepOverBp_() {
     }
     ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr);
     if (Wait_() < 0) {
-      return -1 /* error of the process has exited */;
+      return -1 /* error or the process has exited */;
     }
     // So that we get trapped next time.
     // Notice that the id is reused, so has no impact to the user.
@@ -204,15 +221,26 @@ int Debugger::StepOverBp_() {
     // A hit breakpoint is not a breakpoint this time.
     return 1 /* not at a breakpoint */;
   }
+  // Should no reach here.
   return 1 /* not at a breakpoint */;
 }
 
 void Debugger::Break_(std::uintptr_t addr) {
   std::cout << "** set a breakpoint at 0x" << std::hex << addr << ".\n";
+  auto rip = GetRip_();
+  if (rip < 0) {
+    return;
+  }
+  // Will not stop at the address that current PC points to if you set a
+  // breakpoint on it.
+  if (addr == static_cast<std::uintptr_t>(rip)) {
+    postponed_breakpoints_.push(addr);
+    return;
+  }
   auto bp = Breakpoint{pid_, addr};
   auto bp_id = NextBreakpointId_();
   addr_to_breakpoint_id_.emplace(addr, bp_id);
-  breakpoints_.emplace(bp_id, bp);
+  breakpoints_.emplace(bp_id, std::move(bp));
 }
 
 void Debugger::InfoRegs_() const {
