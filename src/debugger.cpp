@@ -188,10 +188,7 @@ int Debugger::StepOverBp_() {
            ++i) {
         auto addr = postponed_breakpoints_.front();
         postponed_breakpoints_.pop();
-        auto bp = Breakpoint{pid_, addr};
-        auto bp_id = NextBreakpointId_();
-        addr_to_breakpoint_id_.emplace(addr, bp_id);
-        breakpoints_.emplace(bp_id, std::move(bp));
+        CreateBreak_(addr);
       }
       return 0 /* successfully stepped over a breakpoint */;
     }
@@ -237,10 +234,7 @@ void Debugger::Break_(std::uintptr_t addr) {
     postponed_breakpoints_.push(addr);
     return;
   }
-  auto bp = Breakpoint{pid_, addr};
-  auto bp_id = NextBreakpointId_();
-  addr_to_breakpoint_id_.emplace(addr, bp_id);
-  breakpoints_.emplace(bp_id, std::move(bp));
+  CreateBreak_(addr);
 }
 
 void Debugger::InfoRegs_() const {
@@ -384,6 +378,13 @@ void Debugger::Disassemble_(std::uintptr_t addr, std::size_t insn_count) {
               << insn[i].mnemonic << "\t" << insn[i].op_str << "\n";
   }
   cs_free(insn, count);
+}
+
+void Debugger::CreateBreak_(std::uintptr_t addr) {
+  auto bp = Breakpoint{pid_, addr};
+  auto bp_id = NextBreakpointId_();
+  addr_to_breakpoint_id_.emplace(addr, bp_id);
+  breakpoints_.emplace(bp_id, std::move(bp));
 }
 
 namespace {

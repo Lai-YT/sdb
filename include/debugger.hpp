@@ -35,17 +35,16 @@ class Debugger {
   /// @note Using queue to allow possible duplicate breakpoints at a single PC.
   std::queue<std::uintptr_t> postponed_breakpoints_;
 
+  //
+  // Debugger commands.
+  //
+
   /// @note The program is executed as being traced.
   void Load_();
   /// @brief Single step the program.
   void Step_();
   /// @brief Continue the program.
   void Continue_();
-  /// @brief If the program is stopped at a breakpoint, Single step the program
-  /// with the original instruction.
-  /// @return `-1` on error, or if the process has exited; `1` if not at a
-  /// breakpoint; `0` otherwise.
-  int StepOverBp_();
   /// @brief Set a breakpoint at the address.
   void Break_(std::uintptr_t addr);
   void InfoRegs_() const;
@@ -56,12 +55,18 @@ class Debugger {
   // Helper functions.
   //
 
+  /// @brief If the program is stopped at a breakpoint, Single step the program
+  /// with the original instruction.
+  /// @return `-1` on error, or if the process has exited; `1` if not at a
+  /// breakpoint; `0` otherwise.
+  int StepOverBp_();
   /// @return `-1` on error, or if the process has exited.
   int Wait_();
   /// @return The register value. `-1` on error.
   std::intptr_t GetRip_() const;
   int SetRip_(std::uintptr_t rip);
   void Disassemble_(std::uintptr_t addr, std::size_t insn_count);
+  void CreateBreak_(std::uintptr_t addr);
 };
 
 #endif  // DEBUGGER_HPP
