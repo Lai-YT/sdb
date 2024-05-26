@@ -33,6 +33,7 @@ int Debugger::NextBreakpointId_() {
 void Debugger::Run() {
   if (program_) {
     Load_(program_);
+    DisassembleFromRip_(5);
   }
   char* line = nullptr;
   while ((line = readline("(sbg) "))) {
@@ -44,11 +45,13 @@ void Debugger::Run() {
     if (command == "load") {
       auto program = args.at(1);
       Load_(program.c_str());
+      DisassembleFromRip_(5);
     } else if (command == "cont") {
       if (CheckHasLoaded_() < 0) {
         continue;
       }
       Continue_();
+      DisassembleFromRip_(5);
     } else if (command == "break") {
       if (CheckHasLoaded_() < 0) {
         continue;
@@ -64,6 +67,7 @@ void Debugger::Run() {
         continue;
       }
       Step_();
+      DisassembleFromRip_(5);
     } else if (command == "info") {
       if (CheckHasLoaded_() < 0) {
         continue;
@@ -133,8 +137,6 @@ void Debugger::Load_(const char* program) {
     }
     std::cout << "** program '" << program_ << "' loaded. entry point 0x"
               << std::hex << entry_point << ".\n";
-
-    Disassemble_(entry_point, 5);
   }
 }
 
@@ -151,12 +153,6 @@ void Debugger::Step_() {
   if (Wait_() < 0) {
     return;
   }
-  struct user_regs_struct regs;
-  if (ptrace(PTRACE_GETREGS, pid_, nullptr, &regs) < 0) {
-    std::perror("ptrace");
-    return;
-  }
-  Disassemble_(regs.rip, 5);
 }
 
 void Debugger::Continue_() {
@@ -170,12 +166,6 @@ void Debugger::Continue_() {
   if (Wait_() < 0) {
     return;
   }
-  struct user_regs_struct regs;
-  if (ptrace(PTRACE_GETREGS, pid_, nullptr, &regs) < 0) {
-    std::perror("ptrace");
-    return;
-  }
-  Disassemble_(regs.rip, 5);
 }
 
 int Debugger::StepOverBp_() {
@@ -388,6 +378,14 @@ void Debugger::Disassemble_(std::uintptr_t addr, std::size_t insn_count) const {
               << insn[i].mnemonic << "\t" << insn[i].op_str << "\n";
   }
   cs_free(insn, count);
+}
+
+void Debugger::DisassembleFromRip_(std::size_t insn_count) const {
+  auto rip = GetRip_();
+  if (rip < 0) {
+    return;
+  }
+  Disassemble_(rip, insn_count);
 }
 
 void Debugger::CreateBreak_(std::uintptr_t addr) {
