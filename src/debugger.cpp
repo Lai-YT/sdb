@@ -46,8 +46,14 @@ void Debugger::Run() {
       program_ = program.c_str();
       Load_();
     } else if (command == "cont") {
+      if (CheckHasLoaded_() < 0) {
+        continue;
+      }
       Continue_();
     } else if (command == "break") {
+      if (CheckHasLoaded_() < 0) {
+        continue;
+      }
       try {
         auto addr = std::stoul(args.at(1), nullptr, 16);
         Break_(addr);
@@ -55,8 +61,14 @@ void Debugger::Run() {
         std::cout << "Invalid address: " << args.at(1) << "\n";
       }
     } else if (command == "si") {
+      if (CheckHasLoaded_() < 0) {
+        continue;
+      }
       Step_();
     } else if (command == "info") {
+      if (CheckHasLoaded_() < 0) {
+        continue;
+      }
       auto subcommand = args.at(1);
       if (subcommand == "reg") {
         InfoRegs_();
@@ -66,6 +78,9 @@ void Debugger::Run() {
         std::cout << "Unknown subcommand: " << subcommand << "\n";
       }
     } else if (command == "delete") {
+      if (CheckHasLoaded_() < 0) {
+        continue;
+      }
       auto command = args.at(1);
       try {
         auto id = std::stoi(command);
@@ -380,6 +395,14 @@ void Debugger::CreateBreak_(std::uintptr_t addr) {
   auto bp_id = NextBreakpointId_();
   addr_to_breakpoint_id_.emplace(addr, bp_id);
   breakpoints_.emplace(bp_id, std::move(bp));
+}
+
+int Debugger::CheckHasLoaded_() const {
+  if (program_) {
+    return 0;
+  }
+  std::cout << "** please load a program first.\n";
+  return -1;
 }
 
 namespace {
