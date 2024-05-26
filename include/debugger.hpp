@@ -34,6 +34,7 @@ class Debugger {
   /// are hit.
   /// @note Using queue to allow possible duplicate breakpoints at a single PC.
   std::queue<std::uintptr_t> postponed_breakpoints_;
+  bool is_entering_syscall_{true};
 
   //
   // Debugger commands.
@@ -50,6 +51,9 @@ class Debugger {
   void InfoRegs_() const;
   void InfoBreaks_() const;
   void DeleteBreak_(int id);
+  /// @brief Executes until (1) entering a syscall (2) leaving a syscall (3)
+  /// hitting a breakpoint.
+  void Syscall_();
 
   //
   // Helper functions.

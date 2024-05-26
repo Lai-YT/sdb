@@ -91,6 +91,12 @@ void Debugger::Run() {
       } catch (const std::invalid_argument& e) {
         std::cout << "Invalid id: " << command << "\n";
       }
+    } else if (command == "syscall") {
+      if (CheckHasLoaded_() < 0) {
+        continue;
+      }
+      Syscall_();
+      DisassembleFromRip_(5);
     } else {
       std::cout << "Unknown command: " << command << "\n";
     }
@@ -121,7 +127,8 @@ void Debugger::Load_(const char* program) {
     if (Wait_() < 0) {
       return;
     }
-    if (ptrace(PTRACE_SETOPTIONS, pid_, nullptr, PTRACE_O_EXITKILL) < 0) {
+    if (ptrace(PTRACE_SETOPTIONS, pid_, nullptr,
+               PTRACE_O_EXITKILL | PTRACE_O_TRACESYSGOOD) < 0) {
       std::perror("ptrace");
       return;
     }
@@ -280,6 +287,19 @@ void Debugger::DeleteBreak_(int id) {
   }
 }
 
+void Debugger::Syscall_() {
+  if (StepOverBp_() < 0) {
+    return;
+  }
+  if (ptrace(PTRACE_SYSCALL, pid_, nullptr, nullptr) < 0) {
+    std::perror("ptrace");
+    return;
+  }
+  if (Wait_() < 0) {
+    return;
+  }
+}
+
 int Debugger::Wait_() {
   int status;
   if (waitpid(pid_, &status, 0) < 0) {
@@ -290,7 +310,24 @@ int Debugger::Wait_() {
     std::cout << "** the target program terminated.\n";
     return -1;
   }
-  if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGTRAP) {
+  if (WIFSTOPPED(status) && (WSTOPSIG(status) & 0x80)) {
+    struct user_regs_struct regs;
+    if (ptrace(PTRACE_GETREGS, pid_, nullptr, &regs) < 0) {
+      std::perror("ptrace");
+      return -1;
+    }
+    auto syscall_id = regs.orig_rax;
+    if (is_entering_syscall_) {
+      std::cout << "** enter a syscall(" << std::dec << syscall_id << ") at 0x"
+                << std::hex << regs.rip << ".\n";
+    } else {
+      auto syscall_ret = regs.rax;
+      std::cout << "** leave a syscall(" << std::dec << syscall_id
+                << ") = " << syscall_ret << " at 0x" << std::hex << regs.rip
+                << ".\n";
+    }
+    is_entering_syscall_ = !is_entering_syscall_;
+  } else if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGTRAP) {
     auto rip = GetRip_();
     if (rip < 0) {
       return -1;
