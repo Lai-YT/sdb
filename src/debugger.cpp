@@ -67,6 +67,14 @@ void Debugger::Run() {
       } else {
         std::cout << "Unknown subcommand: " << subcommand << "\n";
       }
+    } else if (command == "delete") {
+      auto command = args.at(1);
+      try {
+        auto id = std::stoi(command);
+        DeleteBreak_(id);
+      } catch (const std::invalid_argument& e) {
+        std::cout << "Invalid id: " << command << "\n";
+      }
     } else {
       std::cout << "Unknown command: " << command << "\n";
     }
@@ -236,6 +244,17 @@ void Debugger::InfoBreaks_() const {
   std::cout << "Num\tAddress\n";
   for (const auto& [id, bp] : breakpoints_) {
     std::cout << id << "\t0x" << std::hex << bp.addr() << "\n";
+  }
+}
+
+void Debugger::DeleteBreak_(int id) {
+  if (auto bp_itr = breakpoints_.find(id); bp_itr != breakpoints_.end()) {
+    auto addr = bp_itr->second.addr();
+    breakpoints_.erase(bp_itr);
+    addr_to_breakpoint_id_.erase(addr);
+    std::cout << "** deleted breakpoint " << id << ".\n";
+  } else {
+    std::cout << "** breakpoint " << id << " does not exist.\n";
   }
 }
 

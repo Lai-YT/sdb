@@ -42,6 +42,7 @@ class Debugger {
   void Break_(std::uintptr_t addr);
   void InfoRegs_() const;
   void InfoBreaks_() const;
+  void DeleteBreak_(int id);
 
   //
   // Helper functions.
