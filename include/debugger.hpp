@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <unordered_map>
 
 #include "breakpoint.hpp"
@@ -19,7 +20,8 @@ class Debugger {
   const char* program_;
   pid_t pid_{0};
   /// @note Giving each breakpoint a unique id to support easy deletion.
-  std::unordered_map<int, Breakpoint> breakpoints_;
+  /// @note `map` is used to traverse the breakpoints in order of their id.
+  std::map<int, Breakpoint> breakpoints_;
   /// @note Do not access this directly; use `NextBreakpointId_()` instead.
   int breakpoint_id_{0};
   int NextBreakpointId_();
