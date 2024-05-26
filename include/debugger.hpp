@@ -65,7 +65,7 @@ class Debugger {
   /// @return The register value. `-1` on error.
   std::intptr_t GetRip_() const;
   int SetRip_(std::uintptr_t rip);
-  void Disassemble_(std::uintptr_t addr, std::size_t insn_count);
+  void Disassemble_(std::uintptr_t addr, std::size_t insn_count) const;
   void CreateBreak_(std::uintptr_t addr);
 };
 

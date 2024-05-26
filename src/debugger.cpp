@@ -334,7 +334,7 @@ int Debugger::SetRip_(std::uintptr_t rip) {
   return 0;
 }
 
-void Debugger::Disassemble_(std::uintptr_t addr, std::size_t insn_count) {
+void Debugger::Disassemble_(std::uintptr_t addr, std::size_t insn_count) const {
   csh handle;
   if (cs_open(CS_ARCH_X86, CS_MODE_64, &handle) != CS_ERR_OK) {
     std::perror("cs_open");
