@@ -40,12 +40,20 @@ class Debugger {
   // Debugger commands.
   //
 
+  /// @brief An unified status code for functions to check and propagate.
+  enum class Status {
+    kSuccess = 0,
+    kError = -1,
+    /// @brief Usually an error from `ptrace`.
+    kExit = -2,
+  };
+
   /// @note The program is executed as being traced.
-  void Load_(const char* program);
+  Status Load_(const char* program);
   /// @brief Single step the program.
-  void Step_();
+  Status Step_();
   /// @brief Continue the program.
-  void Continue_();
+  Status Continue_();
   /// @brief Set a breakpoint at the address.
   void Break_(std::uintptr_t addr);
   void InfoRegs_() const;
@@ -53,7 +61,7 @@ class Debugger {
   void DeleteBreak_(int id);
   /// @brief Executes until (1) entering a syscall (2) leaving a syscall (3)
   /// hitting a breakpoint.
-  void Syscall_();
+  Status Syscall_();
 
   //
   // Helper functions.
@@ -61,13 +69,13 @@ class Debugger {
 
   /// @brief If the program is stopped at a breakpoint, Single step the program
   /// with the original instruction.
-  /// @return `-1` on error, or if the process has exited; `1` if not at a
-  /// breakpoint; `0` otherwise.
+  /// @return `-2` if the program has exited; `-1` on error; `1` if not at a
+  /// breakpoint; `0` otherwise. (In addition to Status, it may return `1`.)
   int StepOverBp_();
-  /// @return `-1` on error, or if the process has exited.
-  int Wait_();
+  Status Wait_();
   /// @return The register value. `-1` on error.
   std::intptr_t GetRip_() const;
+  /// @return `-1` on error.
   int SetRip_(std::uintptr_t rip);
   void Disassemble_(std::uintptr_t addr, std::size_t insn_count) const;
   void DisassembleFromRip_(std::size_t insn_count) const;

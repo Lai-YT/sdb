@@ -105,32 +105,32 @@ void Debugger::Run() {
   std::cout << "Quit\n";
 }
 
-void Debugger::Load_(const char* program) {
+Debugger::Status Debugger::Load_(const char* program) {
   program_ = program;
   auto pid = fork();
   if (pid < 0) {
     std::perror("fork");
-    return;
+    return Status::kError;
   }
   if (pid == 0 /* child */) {
     if (ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0) {
       std::perror("ptrace");
-      return;
+      return Status::kError;
     }
     execl(program_, program_, nullptr);
     // Noreturn.
     std::perror("execl");
-    std::exit(1);
+    return Status::kError;
   } else {
     pid_ = pid;
     // Trapped at the first instruction (entry point).
-    if (Wait_() < 0) {
-      return;
+    if (auto status = Wait_(); status != Status::kSuccess) {
+      return status;
     }
     if (ptrace(PTRACE_SETOPTIONS, pid_, nullptr,
                PTRACE_O_EXITKILL | PTRACE_O_TRACESYSGOOD) < 0) {
       std::perror("ptrace");
-      return;
+      return Status::kError;
     }
 
     // Show some information about the program.
@@ -140,56 +140,55 @@ void Debugger::Load_(const char* program) {
 
     auto entry_point = GetRip_();
     if (entry_point < 0) {
-      return;
+      return Status::kError;
     }
     std::cout << "** program '" << program_ << "' loaded. entry point 0x"
               << std::hex << entry_point << ".\n";
   }
+  return Status::kSuccess;
 }
 
-void Debugger::Step_() {
-  auto status = StepOverBp_();
-  if (status <= 0) {
-    return;
+Debugger::Status Debugger::Step_() {
+  if (auto status = StepOverBp_();
+      status < 0 /* error or the program has exited */) {
+    return Status{status};
   }
   // Not at a breakpoint.
   if (ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr) < 0) {
     std::perror("ptrace");
-    return;
+    return Status::kError;
   }
-  if (Wait_() < 0) {
-    return;
-  }
+  return Wait_();
 }
 
-void Debugger::Continue_() {
-  if (StepOverBp_() < 0) {
-    return;
+Debugger::Status Debugger::Continue_() {
+  if (auto status = StepOverBp_();
+      status < 0 /* error or the program has exited */) {
+    return Status{status};
   }
   if (ptrace(PTRACE_CONT, pid_, nullptr, nullptr) < 0) {
     std::perror("ptrace");
-    return;
+    return Status::kError;
   }
-  if (Wait_() < 0) {
-    return;
-  }
+  return Wait_();
 }
 
 int Debugger::StepOverBp_() {
   auto rip = GetRip_();
   if (rip < 0) {
-    return -1;
+    return static_cast<int>(Status::kError);
   }
   // The interrupt instruction (1-byte) is still a instruction, thus it's
   // executed with the PC incremented. We get the original address of the
   // breakpoint by subtracting 1.
   auto break_addr = static_cast<std::uintptr_t>(rip - 1);
+  const int kNotAtBreakpoint = 1;
   if (!addr_to_breakpoint_id_.count(break_addr)) {
     // If we have postponed breakpoints, step over them silently and set them.
     if (!postponed_breakpoints_.empty()) {
       ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr);
-      if (Wait_() < 0) {
-        return -1 /* error or the process has exited */;
+      if (auto status = Wait_(); status != Status::kSuccess) {
+        return static_cast<int>(status);
       }
       for (auto i = std::size_t{0}, e = postponed_breakpoints_.size(); i < e;
            ++i) {
@@ -197,9 +196,10 @@ int Debugger::StepOverBp_() {
         postponed_breakpoints_.pop();
         CreateBreak_(addr);
       }
-      return 0 /* successfully stepped over a breakpoint */;
+      return static_cast<int>(
+          Status::kSuccess) /* successfully stepped over a breakpoint */;
     }
-    return 1 /* not at a breakpoint */;
+    return kNotAtBreakpoint;
   }
   auto bp_id = addr_to_breakpoint_id_.at(break_addr);
   if (auto bp_itr = breakpoints_.find(bp_id);
@@ -209,24 +209,25 @@ int Debugger::StepOverBp_() {
     breakpoints_.at(bp_id).Delete();
     breakpoints_.erase(bp_id);
     if (SetRip_(break_addr)) {
-      return -1;
+      return static_cast<int>(Status::kError);
     }
     ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr);
-    if (Wait_() < 0) {
-      return -1 /* error or the process has exited */;
+    if (auto status = Wait_(); status != Status::kSuccess) {
+      return static_cast<int>(status) /* error or the process has exited */;
     }
     // So that we get trapped next time.
     // Notice that the id is reused, so has no impact to the user.
     breakpoints_.emplace(bp_id, Breakpoint{pid_, break_addr});
-    return 0 /* successfully stepped over a breakpoint */;
+    return static_cast<int>(
+        Status::kSuccess) /* successfully stepped over a breakpoint */;
   } else if (bp_itr != breakpoints_.end() && bp_itr->second.IsHit()) {
     // Set it as not hit, so that it can be hit again.
     bp_itr->second.Unhit();
     // A hit breakpoint is not a breakpoint this time.
-    return 1 /* not at a breakpoint */;
+    return kNotAtBreakpoint;
   }
   // Should no reach here.
-  return 1 /* not at a breakpoint */;
+  return kNotAtBreakpoint;
 }
 
 void Debugger::Break_(std::uintptr_t addr) {
@@ -287,34 +288,32 @@ void Debugger::DeleteBreak_(int id) {
   }
 }
 
-void Debugger::Syscall_() {
-  if (StepOverBp_() < 0) {
-    return;
+Debugger::Status Debugger::Syscall_() {
+  if (auto status = StepOverBp_(); status < 0) {
+    return Status{status};
   }
   if (ptrace(PTRACE_SYSCALL, pid_, nullptr, nullptr) < 0) {
     std::perror("ptrace");
-    return;
+    return Status::kError;
   }
-  if (Wait_() < 0) {
-    return;
-  }
+  return Wait_();
 }
 
-int Debugger::Wait_() {
+Debugger::Status Debugger::Wait_() {
   int status;
   if (waitpid(pid_, &status, 0) < 0) {
     std::perror("waitpid");
-    return -1;
+    return Status::kError;
   }
   if (WIFEXITED(status)) {
     std::cout << "** the target program terminated.\n";
-    return -1;
+    return Status::kExit;
   }
   if (WIFSTOPPED(status) && (WSTOPSIG(status) & 0x80)) {
     struct user_regs_struct regs;
     if (ptrace(PTRACE_GETREGS, pid_, nullptr, &regs) < 0) {
       std::perror("ptrace");
-      return -1;
+      return Status::kError;
     }
     auto syscall_id = regs.orig_rax;
     if (is_entering_syscall_) {
@@ -330,13 +329,13 @@ int Debugger::Wait_() {
   } else if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGTRAP) {
     auto rip = GetRip_();
     if (rip < 0) {
-      return -1;
+      return Status::kError;
     }
     // Since the interrupt instruction is executed, the breakpoint is the one
     // before the current PC.
     if (!addr_to_breakpoint_id_.count(rip - 1)) {
-      // Likey to be trapped an orginal trap in the program.
-      return 0;
+      // Likely to be trapped an original trap in the program.
+      return Status::kSuccess;
     }
     auto bp_id = addr_to_breakpoint_id_.at(rip - 1);
     if (auto bp_itr = breakpoints_.find(bp_id);
@@ -345,7 +344,7 @@ int Debugger::Wait_() {
       bp_itr->second.Hit();
     }
   }
-  return 0;
+  return Status::kSuccess;
 }
 
 std::intptr_t Debugger::GetRip_() const {
