@@ -92,6 +92,8 @@ class Debugger {
   int SetTextSectionEnd_();
   /// @brief Resets the debugger.
   void Unload_();
+
+  static void Usage_();
 };
 
 #endif  // DEBUGGER_HPP

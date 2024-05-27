@@ -46,94 +46,90 @@ void Debugger::Run() {
       add_history(line);
     }
     auto args = Split(line, ' ');
-    auto command = args.at(0);
-    if (command == "load") {
-      auto program = args.at(1);
-      Load_(program.c_str());
-      DisassembleFromRip_(5);
-    } else if (command == "cont") {
-      if (CheckHasLoaded_() < 0) {
-        continue;
-      }
-      if (Continue_() != Status::kSuccess) {
-        continue;
-      }
-      DisassembleFromRip_(5);
-    } else if (command == "break") {
-      if (CheckHasLoaded_() < 0) {
-        continue;
-      }
-      try {
-        auto addr = std::stoul(args.at(1), nullptr, 16);
-        Break_(addr);
-      } catch (const std::invalid_argument& e) {
-        std::cout << "Invalid address: " << args.at(1) << "\n";
-      }
-    } else if (command == "si") {
-      if (CheckHasLoaded_() < 0) {
-        continue;
-      }
-      if (Step_() != Status::kSuccess) {
-        continue;
-      }
-      DisassembleFromRip_(5);
-    } else if (command == "info") {
-      if (CheckHasLoaded_() < 0) {
-        continue;
-      }
-      auto subcommand = args.at(1);
-      if (subcommand == "reg") {
-        InfoRegs_();
-      } else if (subcommand == "break") {
-        InfoBreaks_();
-      } else {
-        std::cout << "Unknown subcommand: " << subcommand << "\n";
-      }
-    } else if (command == "delete") {
-      if (CheckHasLoaded_() < 0) {
-        continue;
-      }
-      auto command = args.at(1);
-      try {
-        auto id = std::stoi(command);
-        DeleteBreak_(id);
-      } catch (const std::invalid_argument& e) {
-        std::cout << "Invalid id: " << command << "\n";
-      }
-    } else if (command == "syscall") {
-      if (CheckHasLoaded_() < 0) {
-        continue;
-      }
-      if (auto status = Syscall_(); status < 0) {
-        continue;
-      } else if (status == 0 /* syscall */) {
-        // The syscall instruction is executed, thus we subtract 2 from the PC
-        // to show the syscall instruction.
-        auto rip = GetRip_();
-        if (rip < 0) {
+    try {
+      auto command = args.at(0);
+      if (command == "load") {
+        auto program = args.at(1);
+        Load_(program.c_str());
+        DisassembleFromRip_(5);
+      } else if (command == "cont") {
+        if (CheckHasLoaded_() < 0) {
           continue;
         }
-        Disassemble_(rip - 2, 5);
-      } else {
-        // On hitting a breakpoint, the PC is already adjusted.
+        if (Continue_() != Status::kSuccess) {
+          continue;
+        }
         DisassembleFromRip_(5);
-      }
-    } else if (command == "patch") {
-      if (CheckHasLoaded_() < 0) {
-        continue;
-      }
-      try {
+      } else if (command == "break") {
+        if (CheckHasLoaded_() < 0) {
+          continue;
+        }
+        auto addr = std::stoul(args.at(1), nullptr, 16);
+        Break_(addr);
+      } else if (command == "si") {
+        if (CheckHasLoaded_() < 0) {
+          continue;
+        }
+        if (Step_() != Status::kSuccess) {
+          continue;
+        }
+        DisassembleFromRip_(5);
+      } else if (command == "info") {
+        if (CheckHasLoaded_() < 0) {
+          continue;
+        }
+        auto subcommand = args.at(1);
+        if (subcommand == "reg") {
+          InfoRegs_();
+        } else if (subcommand == "break") {
+          InfoBreaks_();
+        } else {
+          std::cout << "Unknown subcommand: " << subcommand << "\n";
+          std::cout << "type 'help' for help.\n";
+        }
+      } else if (command == "delete") {
+        if (CheckHasLoaded_() < 0) {
+          continue;
+        }
+        auto command = args.at(1);
+        auto id = std::stoi(command);
+        DeleteBreak_(id);
+      } else if (command == "syscall") {
+        if (CheckHasLoaded_() < 0) {
+          continue;
+        }
+        if (auto status = Syscall_(); status < 0) {
+          continue;
+        } else if (status == 0 /* syscall */) {
+          // The syscall instruction is executed, thus we subtract 2 from the PC
+          // to show the syscall instruction.
+          auto rip = GetRip_();
+          if (rip < 0) {
+            continue;
+          }
+          Disassemble_(rip - 2, 5);
+        } else {
+          // On hitting a breakpoint, the PC is already adjusted.
+          DisassembleFromRip_(5);
+        }
+      } else if (command == "patch") {
+        if (CheckHasLoaded_() < 0) {
+          continue;
+        }
         auto addr = std::stoul(args.at(1), nullptr, 16);
         auto data = std::stoull(args.at(2), nullptr, 16);
         auto len = std::stoul(args.at(3));
         if (Patch_(addr, data, len) != Status::kSuccess) {
           continue;
         }
-      } catch (const std::invalid_argument& e) {
-        std::cout << e.what() << "\n";
+      } else if (command == "help") {
+        Usage_();
+      } else {
+        std::cout << "Unknown command: " << command << "\n";
+        std::cout << "type 'help' for help.\n";
       }
-    } else {
-      std::cout << "Unknown command: " << command << "\n";
+    } catch (const std::exception& e) {
+      Usage_();
     }
     std::free(line);
   }
@@ -614,6 +610,21 @@ void Debugger::Unload_() {
   text_section_end_ = 0;
   breakpoint_id_ = 0;
   is_entering_syscall_ = true;
+}
+
+void Debugger::Usage_() {
+  std::cout << "Commands:\n";
+  std::cout << "  load [program] - load a program\n";
+  std::cout << "  cont - continue the program\n";
+  std::cout << "  break [hex address] - set a breakpoint\n";
+  std::cout << "  si - single step\n";
+  std::cout << "  info reg - show registers\n";
+  std::cout << "  info break - show breakpoints\n";
+  std::cout << "  delete [breakpoint id] - delete a breakpoint\n";
+  std::cout << "  syscall - execute until syscall or breakpoint\n";
+  std::cout << "  patch [hex address] [hex data] [length] - patch memory; "
+               "length: 1, 2, 4, 8\n";
+  std::cout << "  help - show this message\n";
 }
 
 namespace {
