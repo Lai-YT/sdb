@@ -103,10 +103,20 @@ void Debugger::Run() {
       if (CheckHasLoaded_() < 0) {
         continue;
       }
-      if (Syscall_() != Status::kSuccess) {
+      if (auto status = Syscall_(); status < 0) {
         continue;
+      } else if (status == 0 /* syscall */) {
+        // The syscall instruction is executed, thus we subtract 2 from the PC
+        // to show the syscall instruction.
+        auto rip = GetRip_();
+        if (rip < 0) {
+          continue;
+        }
+        Disassemble_(rip - 2, 5);
+      } else {
+        // On hitting a breakpoint, the PC is already adjusted.
+        DisassembleFromRip_(5);
       }
-      DisassembleFromRip_(5);
     } else {
       std::cout << "Unknown command: " << command << "\n";
     }
@@ -308,57 +318,57 @@ void Debugger::DeleteBreak_(int id) {
   }
 }
 
-Debugger::Status Debugger::Syscall_() {
+int Debugger::Syscall_() {
   // If the PC is at a breakpoint, it is already reported by the previous
   // command. Thus, we simply step over the breakpoint.
   if (auto status = StepOverBp_();
       status < 0 /* error or the program has exited */) {
-    return Status{status};
+    return status;
   }
 
   // Then the actual syscall.
   if (ptrace(PTRACE_SYSCALL, pid_, nullptr, nullptr) < 0) {
     std::perror("ptrace");
-    return Status::kError;
+    return -1;
   }
   if (auto status = Wait_(); status != Status::kSuccess) {
-    return status;
+    return static_cast<int>(status);
   }
   // The stop may be due to syscall or breakpoint.
   // If PC - 1 is a breakpoint, we know it's caused by the breakpoint.
   // Otherwise, it's caused by the syscall.
   auto rip = GetRip_();
   if (rip < 0) {
-    return Status::kError;
+    return -1;
   }
   if (addr_to_breakpoint_id_.count(rip - 1)) {
     std::cout << "** hit a breakpoint at 0x" << std::hex << rip - 1 << ".\n";
     // And we adjust the PC to the original address, so that next time we can
     // execute it as not a breakpoint.
     if (SetRip_(rip - 1) < 0) {
-      return Status::kError;
+      return -1;
     }
-  } else {
-    struct user_regs_struct regs;
-    if (ptrace(PTRACE_GETREGS, pid_, nullptr, &regs) < 0) {
-      std::perror("ptrace");
-      return Status::kError;
-    }
-    auto syscall_id = regs.orig_rax;
-    // The syscall instruction is executed, thus we subtract 2 from the PC to
-    // show the syscall instruction.
-    if (is_entering_syscall_) {
-      std::cout << "** enter a syscall(" << std::dec << syscall_id << ") at 0x"
-                << std::hex << regs.rip - 2 << ".\n";
-    } else {
-      auto syscall_ret = regs.rax;
-      std::cout << "** leave a syscall(" << std::dec << syscall_id
-                << ") = " << syscall_ret << " at 0x" << std::hex << regs.rip - 2
-                << ".\n";
-    }
-    is_entering_syscall_ = !is_entering_syscall_;
+    return 1 /* stopped at a breakpoint */;
   }
-  return Status::kSuccess;
+  struct user_regs_struct regs;
+  if (ptrace(PTRACE_GETREGS, pid_, nullptr, &regs) < 0) {
+    std::perror("ptrace");
+    return -1;
+  }
+  auto syscall_id = regs.orig_rax;
+  // The syscall instruction is executed, thus we subtract 2 from the PC to
+  // show the syscall instruction.
+  if (is_entering_syscall_) {
+    std::cout << "** enter a syscall(" << std::dec << syscall_id << ") at 0x"
+              << std::hex << regs.rip - 2 << ".\n";
+  } else {
+    auto syscall_ret = regs.rax;
+    std::cout << "** leave a syscall(" << std::dec << syscall_id
+              << ") = " << syscall_ret << " at 0x" << std::hex << regs.rip - 2
+              << ".\n";
+  }
+  is_entering_syscall_ = !is_entering_syscall_;
+  return 0;
 }
 
 Debugger::Status Debugger::Wait_() {

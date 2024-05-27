@@ -57,7 +57,9 @@ class Debugger {
   void DeleteBreak_(int id);
   /// @brief Executes until (1) entering a syscall (2) leaving a syscall (3)
   /// hitting a breakpoint.
-  Status Syscall_();
+  /// @return `-2` if the program has exited; `-1` on error; `1` stopped at a
+  /// breakpoint; `0` otherwise. (In addition to Status, it may return `1`.)
+  int Syscall_();
 
   //
   // Helper functions.
