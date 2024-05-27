@@ -408,16 +408,32 @@ int Debugger::SetRip_(std::uintptr_t rip) {
   return 0;
 }
 
-void Debugger::Disassemble_(std::uintptr_t addr, std::size_t insn_count) const {
+void Debugger::Disassemble_(std::uintptr_t addr, std::size_t insn_count) {
   csh handle;
   if (cs_open(CS_ARCH_X86, CS_MODE_64, &handle) != CS_ERR_OK) {
     std::perror("cs_open");
     return;
   }
   constexpr auto kMaxInsnSize = std::size_t{15};
+  // To avoid showing the interrupt instruction, check whether there are any
+  // breakpoints within this range. Delete them if any and add them back later.
+  // Since we keep the breakpoint id, the user is not aware of the deletion.
+  auto deleted_breakpoints = std::vector<
+      std::pair<std::uintptr_t /* break_addr */, int /* bp id */>>{};
+  for (auto [break_addr, bp_id] : addr_to_breakpoint_id_) {
+    if (addr <= break_addr && break_addr < addr + kMaxInsnSize * insn_count) {
+      breakpoints_.at(bp_id).Delete();
+      breakpoints_.erase(bp_id);
+      deleted_breakpoints.emplace_back(break_addr, bp_id);
+    }
+  }
   auto text = std::vector<std::uint8_t>(kMaxInsnSize * insn_count);
   for (auto i = std::size_t{0}; i < sizeof(text); ++i) {
     text[i] = ptrace(PTRACE_PEEKTEXT, pid_, addr + i, nullptr);
+  }
+  // Add back the breakpoints.
+  for (auto [break_addr, bp_id] : deleted_breakpoints) {
+    breakpoints_.emplace(bp_id, Breakpoint{pid_, break_addr});
   }
   cs_insn* insn;
   auto count =
@@ -462,7 +478,7 @@ void Debugger::Disassemble_(std::uintptr_t addr, std::size_t insn_count) const {
   }
 }
 
-void Debugger::DisassembleFromRip_(std::size_t insn_count) const {
+void Debugger::DisassembleFromRip_(std::size_t insn_count) {
   auto rip = GetRip_();
   if (rip < 0) {
     return;

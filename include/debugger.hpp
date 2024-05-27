@@ -78,8 +78,8 @@ class Debugger {
   std::intptr_t GetRip_() const;
   /// @return `-1` on error.
   int SetRip_(std::uintptr_t rip);
-  void Disassemble_(std::uintptr_t addr, std::size_t insn_count) const;
-  void DisassembleFromRip_(std::size_t insn_count) const;
+  void Disassemble_(std::uintptr_t addr, std::size_t insn_count);
+  void DisassembleFromRip_(std::size_t insn_count);
   void CreateBreak_(std::uintptr_t addr);
   /// @return `-1` if no program is loaded; `0` otherwise.
   int CheckHasLoaded_() const;
