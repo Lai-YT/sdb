@@ -1,10 +1,14 @@
 #include "debugger.hpp"
 
 #include <capstone/capstone.h>
+#include <elf.h>
+#include <fcntl.h>
 #include <readline/history.h>
 #include <readline/readline.h>
 #include <signal.h>
+#include <sys/mman.h>
 #include <sys/ptrace.h>
+#include <sys/stat.h>
 #include <sys/user.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -13,6 +17,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -113,6 +118,9 @@ void Debugger::Run() {
 
 Debugger::Status Debugger::Load_(const char* program) {
   program_ = program;
+  if (SetTextSectionBounds_() < 0) {
+    return Status::kError;
+  }
   auto pid = fork();
   if (pid < 0) {
     std::perror("fork");
@@ -443,6 +451,59 @@ int Debugger::CheckHasLoaded_() const {
     return 0;
   }
   std::cout << "** please load a program first.\n";
+  return -1;
+}
+
+int Debugger::SetTextSectionBounds_() {
+  auto fd = open(program_, O_RDONLY);
+  if (fd < 0) {
+    std::perror("open");
+    return -1;
+  }
+  struct stat st;
+  if (fstat(fd, &st) < 0) {
+    std::perror("fstat");
+    close(fd);
+    return -1;
+  }
+  if (st.st_size < static_cast<off_t>(sizeof(Elf64_Ehdr))) {
+    std::cerr << "The file is too small to be an ELF file.\n";
+    close(fd);
+    return -1;
+  }
+
+  auto maddr = std::uintptr_t{0};
+  if (auto ret = mmap(nullptr, st.st_size, PROT_READ, MAP_SHARED, fd, 0);
+      ret == MAP_FAILED) {
+    std::perror("mmap");
+    close(fd);
+    return -1;
+  } else {
+    maddr = reinterpret_cast<std::uintptr_t>(ret);
+  }
+
+  if (std::strncmp(reinterpret_cast<char*>(maddr), ELFMAG, SELFMAG) != 0) {
+    std::cerr << "The file is not an ELF file.\n";
+    munmap(reinterpret_cast<void*>(maddr), st.st_size);
+    close(fd);
+    return -1;
+  }
+
+  auto ehdr = reinterpret_cast<Elf64_Ehdr*>(maddr);
+  auto shdr = reinterpret_cast<Elf64_Shdr*>(maddr + ehdr->e_shoff);
+  auto shstrtab =
+      reinterpret_cast<char*>(maddr + shdr[ehdr->e_shstrndx].sh_offset);
+  for (auto i = std::size_t{0}; i < ehdr->e_shnum; ++i) {
+    if (std::string_view{&shstrtab[shdr[i].sh_name]} == ".text") {
+      text_section_bounds_ = {shdr[i].sh_addr,
+                              shdr[i].sh_addr + shdr[i].sh_size};
+      munmap(reinterpret_cast<void*>(maddr), st.st_size);
+      close(fd);
+      return 0;
+    }
+  }
+  munmap(reinterpret_cast<void*>(maddr), st.st_size);
+  close(fd);
   return -1;
 }
 

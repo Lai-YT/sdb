@@ -18,7 +18,13 @@ class Debugger {
   Debugger(const char* program) : program_{program} {}
 
  private:
+  struct SectionBounds {
+    std::uintptr_t start;
+    std::uintptr_t end;
+  };
+
   const char* program_;
+  SectionBounds text_section_bounds_;
   pid_t pid_{0};
   /// @note Giving each breakpoint a unique id to support easy deletion.
   /// @note `map` is used to traverse the breakpoints in order of their id.
@@ -82,6 +88,8 @@ class Debugger {
   void CreateBreak_(std::uintptr_t addr);
   /// @return `-1` if no program is loaded; `0` otherwise.
   int CheckHasLoaded_() const;
+  /// @return `-1` on error; `0` otherwise.
+  int SetTextSectionBounds_();
 };
 
 #endif  // DEBUGGER_HPP
