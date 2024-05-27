@@ -280,6 +280,7 @@ void Debugger::InfoBreaks_() const {
 void Debugger::DeleteBreak_(int id) {
   if (auto bp_itr = breakpoints_.find(id); bp_itr != breakpoints_.end()) {
     auto addr = bp_itr->second.addr();
+    bp_itr->second.Delete();
     breakpoints_.erase(bp_itr);
     addr_to_breakpoint_id_.erase(addr);
     std::cout << "** deleted breakpoint " << id << ".\n";
