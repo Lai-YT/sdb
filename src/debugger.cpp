@@ -403,14 +403,16 @@ void Debugger::Disassemble_(std::uintptr_t addr, std::size_t insn_count) const {
     std::cerr << "cs_disasm: " << cs_strerror(cs_errno(handle)) << "\n";
     return;
   }
-  // TODO: If the disassembled instructions are less than 5, output `** the
-  // address is out of the range of the text section.`
+
+  auto insn_count_in_text_section = static_cast<std::size_t>(std::count_if(
+      insn, insn + count,
+      [this](auto&& i) { return i.address < text_section_bounds_.end; }));
   auto max_len = std::size_t{0};
-  for (auto i = std::size_t{0}; i < insn_count; ++i) {
+  for (auto i = std::size_t{0}; i < insn_count_in_text_section; ++i) {
     max_len = std::max(max_len, static_cast<std::size_t>(insn[i].size));
   }
   auto len = std::size_t{0};
-  for (auto i = std::size_t{0}; i < insn_count; ++i) {
+  for (auto i = std::size_t{0}; i < insn_count_in_text_section; ++i) {
     std::cout << "\t" << std::hex << insn[i].address << ": ";
     for (auto j = std::size_t{0}; j < insn[i].size; ++j) {
       // XXX: Using insn[i].bytes[j] shows garbled output.
@@ -427,6 +429,9 @@ void Debugger::Disassemble_(std::uintptr_t addr, std::size_t insn_count) const {
 
     std::cout << std::string(padding + 1 /* at least one tab */, '\t')
               << insn[i].mnemonic << "\t" << insn[i].op_str << "\n";
+  }
+  if (insn_count_in_text_section < insn_count) {
+    std::cout << "** the address is out of the range of the text section.\n";
   }
   cs_free(insn, count);
   if (auto err = cs_close(&handle); err != CS_ERR_OK) {
