@@ -5,7 +5,6 @@
 #include <fcntl.h>
 #include <readline/history.h>
 #include <readline/readline.h>
-#include <signal.h>
 #include <sys/mman.h>
 #include <sys/ptrace.h>
 #include <sys/stat.h>
@@ -162,98 +161,104 @@ Debugger::Status Debugger::Load_(const char* program) {
   return Status::kSuccess;
 }
 
+/// @details When single stepping, we report a hit on a breakpoint before
+/// actually reaching the interrupt instruction. This approach prevents a
+/// scenario where the last step before the breakpoint shows no progress, as it
+/// executes the interrupt instruction, which is not part of the actual program.
 Debugger::Status Debugger::Step_() {
-  if (auto status = StepOverBp_();
-      status < 0 /* error or the program has exited */) {
+  // If the PC is at a breakpoint, it is already reported by the previous
+  // command. Thus, we simply disable the breakpoint and single step.
+  auto status = StepOverBp_();
+  if (status < 0 /* error or the program has exited */) {
     return Status{status};
   }
-  // Not at a breakpoint.
-  if (ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr) < 0) {
-    std::perror("ptrace");
+
+  if (status != 0 /* not at a breakpoint */) {
+    if (ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr) < 0) {
+      std::perror("ptrace");
+      return Status::kError;
+    }
+    if (auto status = Wait_(); status != Status::kSuccess) {
+      return status;
+    }
+  }
+
+  // If the next instruction is a breakpoint (current PC), we report a hit.
+  auto rip = GetRip_();
+  if (rip < 0) {
     return Status::kError;
   }
-  return Wait_();
+  if (addr_to_breakpoint_id_.count(rip)) {
+    std::cout << "** hit a breakpoint at 0x" << std::hex << rip << ".\n";
+  }
+
+  return Status::kSuccess;
 }
 
 Debugger::Status Debugger::Continue_() {
+  // If the PC is at a breakpoint, it is already reported by the previous
+  // command. Thus, we simply step over the breakpoint.
   if (auto status = StepOverBp_();
       status < 0 /* error or the program has exited */) {
     return Status{status};
   }
+  // Then the actual continue.
   if (ptrace(PTRACE_CONT, pid_, nullptr, nullptr) < 0) {
     std::perror("ptrace");
     return Status::kError;
   }
-  return Wait_();
+  if (auto status = Wait_(); status != Status::kSuccess) {
+    return status;
+  }
+
+  // The continue may step on the breakpoint. If PC - 1 is a breakpoint, we know
+  // it's hit.
+  auto rip = GetRip_();
+  if (rip < 0) {
+    return Status::kError;
+  }
+  // We may also be stopped by other signals, or an interrupt of the program
+  // itself, which are not reported as hitting a breakpoint.
+  if (addr_to_breakpoint_id_.count(rip - 1)) {
+    std::cout << "** hit a breakpoint at 0x" << std::hex << rip - 1 << ".\n";
+    // And we adjust the PC to the original address, so that next time we can
+    // execute it as not a breakpoint.
+    if (SetRip_(rip - 1) < 0) {
+      return Status::kError;
+    }
+  }
+  return Status::kSuccess;
 }
 
 int Debugger::StepOverBp_() {
-  auto rip = GetRip_();
-  if (rip < 0) {
+  auto ret = GetRip_();
+  if (ret < 0) {
     return static_cast<int>(Status::kError);
   }
-  // The interrupt instruction (1-byte) is still a instruction, thus it's
-  // executed with the PC incremented. We get the original address of the
-  // breakpoint by subtracting 1.
-  auto break_addr = static_cast<std::uintptr_t>(rip - 1);
-  const int kNotAtBreakpoint = 1;
-  if (!addr_to_breakpoint_id_.count(break_addr)) {
-    // If we have postponed breakpoints, step over them silently and set them.
-    if (!postponed_breakpoints_.empty()) {
-      ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr);
-      if (auto status = Wait_(); status != Status::kSuccess) {
-        return static_cast<int>(status);
-      }
-      for (auto i = std::size_t{0}, e = postponed_breakpoints_.size(); i < e;
-           ++i) {
-        auto addr = postponed_breakpoints_.front();
-        postponed_breakpoints_.pop();
-        CreateBreak_(addr);
-      }
-      return static_cast<int>(
-          Status::kSuccess) /* successfully stepped over a breakpoint */;
-    }
-    return kNotAtBreakpoint;
-  }
-  auto bp_id = addr_to_breakpoint_id_.at(break_addr);
-  if (auto bp_itr = breakpoints_.find(bp_id);
-      bp_itr != breakpoints_.end() && !bp_itr->second.IsHit()) {
-    std::cerr << "** stepping over a breakpoint at 0x" << std::hex << break_addr
-              << ".\n";
+  auto rip = static_cast<std::uintptr_t>(ret);
+  if (addr_to_breakpoint_id_.count(rip)) {
+    auto bp_id = addr_to_breakpoint_id_.at(rip);
     breakpoints_.at(bp_id).Delete();
     breakpoints_.erase(bp_id);
-    if (SetRip_(break_addr)) {
+    // Notice that the id is not erased, as we will reuse it. So that the user
+    // is not aware of it.
+    if (ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr) < 0) {
+      std::perror("ptrace");
       return static_cast<int>(Status::kError);
     }
-    ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr);
     if (auto status = Wait_(); status != Status::kSuccess) {
-      return static_cast<int>(status) /* error or the process has exited */;
+      return static_cast<int>(status) /* error or the program has exited */;
     }
-    // So that we get trapped next time.
-    // Notice that the id is reused, so has no impact to the user.
-    breakpoints_.emplace(bp_id, Breakpoint{pid_, break_addr});
-    return static_cast<int>(
-        Status::kSuccess) /* successfully stepped over a breakpoint */;
-  } else if (bp_itr != breakpoints_.end() && bp_itr->second.IsHit()) {
-    // Set it as not hit, so that it can be hit again.
-    bp_itr->second.Unhit();
-    // A hit breakpoint is not a breakpoint this time.
-    return kNotAtBreakpoint;
+    breakpoints_.emplace(bp_id, Breakpoint{pid_, rip});
+    return 0 /* stepped over a breakpoint */;
   }
-  // Should no reach here.
-  return kNotAtBreakpoint;
+  return 1 /* not at a breakpoint */;
 }
 
 void Debugger::Break_(std::uintptr_t addr) {
   std::cout << "** set a breakpoint at 0x" << std::hex << addr << ".\n";
   auto rip = GetRip_();
   if (rip < 0) {
-    return;
-  }
-  // Will not stop at the address that current PC points to if you set a
-  // breakpoint on it.
-  if (addr == static_cast<std::uintptr_t>(rip)) {
-    postponed_breakpoints_.push(addr);
     return;
   }
   CreateBreak_(addr);
@@ -304,14 +309,56 @@ void Debugger::DeleteBreak_(int id) {
 }
 
 Debugger::Status Debugger::Syscall_() {
-  if (auto status = StepOverBp_(); status < 0) {
+  // If the PC is at a breakpoint, it is already reported by the previous
+  // command. Thus, we simply step over the breakpoint.
+  if (auto status = StepOverBp_();
+      status < 0 /* error or the program has exited */) {
     return Status{status};
   }
+
+  // Then the actual syscall.
   if (ptrace(PTRACE_SYSCALL, pid_, nullptr, nullptr) < 0) {
     std::perror("ptrace");
     return Status::kError;
   }
-  return Wait_();
+  if (auto status = Wait_(); status != Status::kSuccess) {
+    return status;
+  }
+  // The stop may be due to syscall or breakpoint.
+  // If PC - 1 is a breakpoint, we know it's caused by the breakpoint.
+  // Otherwise, it's caused by the syscall.
+  auto rip = GetRip_();
+  if (rip < 0) {
+    return Status::kError;
+  }
+  if (addr_to_breakpoint_id_.count(rip - 1)) {
+    std::cout << "** hit a breakpoint at 0x" << std::hex << rip - 1 << ".\n";
+    // And we adjust the PC to the original address, so that next time we can
+    // execute it as not a breakpoint.
+    if (SetRip_(rip - 1) < 0) {
+      return Status::kError;
+    }
+  } else {
+    struct user_regs_struct regs;
+    if (ptrace(PTRACE_GETREGS, pid_, nullptr, &regs) < 0) {
+      std::perror("ptrace");
+      return Status::kError;
+    }
+    auto syscall_id = regs.orig_rax;
+    // The syscall instruction is executed, thus we subtract 2 from the PC to
+    // show the syscall instruction.
+    if (is_entering_syscall_) {
+      std::cout << "** enter a syscall(" << std::dec << syscall_id << ") at 0x"
+                << std::hex << regs.rip - 2 << ".\n";
+    } else {
+      auto syscall_ret = regs.rax;
+      std::cout << "** leave a syscall(" << std::dec << syscall_id
+                << ") = " << syscall_ret << " at 0x" << std::hex << regs.rip - 2
+                << ".\n";
+    }
+    is_entering_syscall_ = !is_entering_syscall_;
+  }
+  return Status::kSuccess;
 }
 
 Debugger::Status Debugger::Wait_() {
@@ -324,41 +371,6 @@ Debugger::Status Debugger::Wait_() {
     std::cout << "** the target program terminated.\n";
     Unload_();
     return Status::kExit;
-  }
-  if (WIFSTOPPED(status) && (WSTOPSIG(status) & 0x80)) {
-    struct user_regs_struct regs;
-    if (ptrace(PTRACE_GETREGS, pid_, nullptr, &regs) < 0) {
-      std::perror("ptrace");
-      return Status::kError;
-    }
-    auto syscall_id = regs.orig_rax;
-    if (is_entering_syscall_) {
-      std::cout << "** enter a syscall(" << std::dec << syscall_id << ") at 0x"
-                << std::hex << regs.rip << ".\n";
-    } else {
-      auto syscall_ret = regs.rax;
-      std::cout << "** leave a syscall(" << std::dec << syscall_id
-                << ") = " << syscall_ret << " at 0x" << std::hex << regs.rip
-                << ".\n";
-    }
-    is_entering_syscall_ = !is_entering_syscall_;
-  } else if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGTRAP) {
-    auto rip = GetRip_();
-    if (rip < 0) {
-      return Status::kError;
-    }
-    // Since the interrupt instruction is executed, the breakpoint is the one
-    // before the current PC.
-    if (!addr_to_breakpoint_id_.count(rip - 1)) {
-      // Likely to be trapped an original trap in the program.
-      return Status::kSuccess;
-    }
-    auto bp_id = addr_to_breakpoint_id_.at(rip - 1);
-    if (auto bp_itr = breakpoints_.find(bp_id);
-        bp_itr != breakpoints_.end() && !bp_itr->second.IsHit()) {
-      std::cout << "** hit a breakpoint at 0x" << std::hex << rip - 1 << ".\n";
-      bp_itr->second.Hit();
-    }
   }
   return Status::kSuccess;
 }

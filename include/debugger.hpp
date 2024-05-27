@@ -6,7 +6,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
-#include <queue>
 #include <unordered_map>
 
 #include "breakpoint.hpp"
@@ -31,11 +30,6 @@ class Debugger {
   /// @note Maps the address to the breakpoint id.
   /// @note Incremented for each "user-created" breakpoint.
   std::unordered_map<std::uintptr_t, int> addr_to_breakpoint_id_;
-  /// @note the creation of these breakpoints are postponed because they are set
-  /// on the current PC. They are created later to take effect next time they
-  /// are hit.
-  /// @note Using queue to allow possible duplicate breakpoints at a single PC.
-  std::queue<std::uintptr_t> postponed_breakpoints_;
   bool is_entering_syscall_{true};
 
   //
@@ -69,8 +63,8 @@ class Debugger {
   // Helper functions.
   //
 
-  /// @brief If the program is stopped at a breakpoint, Single step the program
-  /// with the original instruction.
+  /// @brief If the PC is at a breakpoint, Single step the program with the
+  /// original instruction.
   /// @return `-2` if the program has exited; `-1` on error; `1` if not at a
   /// breakpoint; `0` otherwise. (In addition to Status, it may return `1`.)
   int StepOverBp_();

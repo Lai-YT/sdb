@@ -11,21 +11,6 @@ class Breakpoint {
   /// @note Deleting a breakpoint twice may cause unexpected behavior.
   void Delete();
 
-  /// @brief Check if the breakpoint is hit.
-  bool IsHit() const {
-    return is_hit_;
-  }
-  /// @brief Set the breakpoint as hit. This is to help avoiding from being
-  /// trapped between two consecutive breakpoints.
-  void Hit() {
-    is_hit_ = true;
-  }
-
-  /// @brief Set the breakpoint as not hit, so that it can be hit again.
-  void Unhit() {
-    is_hit_ = false;
-  }
-
   std::uintptr_t addr() const {
     return addr_;
   }
