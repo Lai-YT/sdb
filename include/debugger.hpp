@@ -60,6 +60,11 @@ class Debugger {
   /// @return `-2` if the program has exited; `-1` on error; `1` stopped at a
   /// breakpoint; `0` otherwise. (In addition to Status, it may return `1`.)
   int Syscall_();
+  /// @brief Patch the data at the address.
+  /// @param len The length of the `data` in bytes; should be `1`, `2`, `4`, or
+  /// `8`.
+  /// @throw `std::invalid_argument` If `len` is not valid.
+  Status Patch_(std::uintptr_t addr, std::uint64_t data, std::size_t len);
 
   //
   // Helper functions.

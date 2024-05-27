@@ -117,6 +117,20 @@ void Debugger::Run() {
         // On hitting a breakpoint, the PC is already adjusted.
         DisassembleFromRip_(5);
       }
+    } else if (command == "patch") {
+      if (CheckHasLoaded_() < 0) {
+        continue;
+      }
+      try {
+        auto addr = std::stoul(args.at(1), nullptr, 16);
+        auto data = std::stoull(args.at(2), nullptr, 16);
+        auto len = std::stoul(args.at(3));
+        if (Patch_(addr, data, len) != Status::kSuccess) {
+          continue;
+        }
+      } catch (const std::invalid_argument& e) {
+        std::cout << e.what() << "\n";
+      }
     } else {
       std::cout << "Unknown command: " << command << "\n";
     }
@@ -369,6 +383,29 @@ int Debugger::Syscall_() {
   }
   is_entering_syscall_ = !is_entering_syscall_;
   return 0;
+}
+
+Debugger::Status Debugger::Patch_(std::uintptr_t addr, std::uint64_t data,
+                                  std::size_t len) {
+  if (len != 1 && len != 2 && len != 4 && len != 8) {
+    throw std::invalid_argument{"Invalid data length"};
+  }
+  auto orig_data = ptrace(PTRACE_PEEKTEXT, pid_, addr, nullptr);
+  if (orig_data < 0 && errno) {
+    std::perror("ptrace");
+    return Status::kError;
+  }
+  auto mask = std::uint64_t{0};
+  for (auto i = std::size_t{0}; i < len; ++i) {
+    mask |= 0xff << (i * 8);
+  }
+  auto new_data = (orig_data & ~mask) | (data & mask);
+  if (ptrace(PTRACE_POKETEXT, pid_, addr, new_data) < 0) {
+    std::perror("ptrace");
+    return Status::kError;
+  }
+  std::cout << "** patch memory at 0x" << std::hex << addr << ".\n";
+  return Status::kSuccess;
 }
 
 Debugger::Status Debugger::Wait_() {
