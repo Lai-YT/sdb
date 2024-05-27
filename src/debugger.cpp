@@ -50,7 +50,9 @@ void Debugger::Run() {
       if (CheckHasLoaded_() < 0) {
         continue;
       }
-      Continue_();
+      if (Continue_() != Status::kSuccess) {
+        continue;
+      }
       DisassembleFromRip_(5);
     } else if (command == "break") {
       if (CheckHasLoaded_() < 0) {
@@ -66,7 +68,9 @@ void Debugger::Run() {
       if (CheckHasLoaded_() < 0) {
         continue;
       }
-      Step_();
+      if (Step_() != Status::kSuccess) {
+        continue;
+      }
       DisassembleFromRip_(5);
     } else if (command == "info") {
       if (CheckHasLoaded_() < 0) {
@@ -95,7 +99,9 @@ void Debugger::Run() {
       if (CheckHasLoaded_() < 0) {
         continue;
       }
-      Syscall_();
+      if (Syscall_() != Status::kSuccess) {
+        continue;
+      }
       DisassembleFromRip_(5);
     } else {
       std::cout << "Unknown command: " << command << "\n";
