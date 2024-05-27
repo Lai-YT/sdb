@@ -322,6 +322,7 @@ Debugger::Status Debugger::Wait_() {
   }
   if (WIFEXITED(status)) {
     std::cout << "** the target program terminated.\n";
+    Unload_();
     return Status::kExit;
   }
   if (WIFSTOPPED(status) && (WSTOPSIG(status) & 0x80)) {
@@ -512,6 +513,14 @@ int Debugger::SetTextSectionEnd_() {
   munmap(reinterpret_cast<void*>(maddr), st.st_size);
   close(fd);
   return -1;
+}
+
+void Debugger::Unload_() {
+  program_ = nullptr;
+  pid_ = 0;
+  text_section_end_ = 0;
+  breakpoint_id_ = 0;
+  is_entering_syscall_ = true;
 }
 
 namespace {

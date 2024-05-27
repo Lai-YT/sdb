@@ -74,6 +74,9 @@ class Debugger {
   /// @return `-2` if the program has exited; `-1` on error; `1` if not at a
   /// breakpoint; `0` otherwise. (In addition to Status, it may return `1`.)
   int StepOverBp_();
+  /// @brief Waits for the program to stop, and shows information according to
+  /// the reason of stopping.
+  /// @note The program is unloaded if it has exited.
   Status Wait_();
   /// @return The register value. `-1` on error.
   std::intptr_t GetRip_() const;
@@ -86,6 +89,8 @@ class Debugger {
   int CheckHasLoaded_() const;
   /// @return `-1` on error; `0` otherwise.
   int SetTextSectionEnd_();
+  /// @brief Resets the debugger.
+  void Unload_();
 };
 
 #endif  // DEBUGGER_HPP
