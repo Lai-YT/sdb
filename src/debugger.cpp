@@ -2,6 +2,7 @@
 
 #include <capstone/capstone.h>
 #include <elf.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <readline/history.h>
 #include <readline/readline.h>
@@ -262,7 +263,10 @@ int Debugger::StepOverBp_() {
   auto rip = static_cast<std::uintptr_t>(ret);
   if (addr_to_breakpoint_id_.count(rip)) {
     auto bp_id = addr_to_breakpoint_id_.at(rip);
-    breakpoints_.at(bp_id).Delete();
+    if (breakpoints_.at(bp_id).Delete() < 0) {
+      std::cerr << "Failed to delete a breakpoint.\n";
+      return Status::kError;
+    }
     breakpoints_.erase(bp_id);
     // Notice that the id is not erased, as we will reuse it. So that the user
     // is not aware of it.
@@ -323,7 +327,10 @@ void Debugger::InfoBreaks_() const {
 void Debugger::DeleteBreak_(int id) {
   if (auto bp_itr = breakpoints_.find(id); bp_itr != breakpoints_.end()) {
     auto addr = bp_itr->second.addr();
-    bp_itr->second.Delete();
+    if (bp_itr->second.Delete() < 0) {
+      std::cerr << "Failed to delete a breakpoint.\n";
+      return;
+    }
     breakpoints_.erase(bp_itr);
     addr_to_breakpoint_id_.erase(addr);
     std::cout << "** deleted breakpoint " << id << ".\n";
@@ -390,8 +397,9 @@ Debugger::Status Debugger::Patch_(std::uintptr_t addr, std::uint64_t data,
   if (len != 1 && len != 2 && len != 4 && len != 8) {
     throw std::invalid_argument{"Invalid data length"};
   }
+  errno = 0;
   auto orig_data = ptrace(PTRACE_PEEKTEXT, pid_, addr, nullptr);
-  if (orig_data < 0 && errno) {
+  if (errno) {
     std::perror("ptrace");
     return Status::kError;
   }
@@ -400,7 +408,9 @@ Debugger::Status Debugger::Patch_(std::uintptr_t addr, std::uint64_t data,
     mask |= 0xff << (i * 8);
   }
   auto new_data = (orig_data & ~mask) | (data & mask);
-  if (ptrace(PTRACE_POKETEXT, pid_, addr, new_data) < 0) {
+  errno = 0;
+  ptrace(PTRACE_POKETEXT, pid_, addr, new_data);
+  if (errno) {
     std::perror("ptrace");
     return Status::kError;
   }
@@ -459,14 +469,22 @@ void Debugger::Disassemble_(std::uintptr_t addr, std::size_t insn_count) {
       std::pair<std::uintptr_t /* break_addr */, int /* bp id */>>{};
   for (auto [break_addr, bp_id] : addr_to_breakpoint_id_) {
     if (addr <= break_addr && break_addr < addr + kMaxInsnSize * insn_count) {
-      breakpoints_.at(bp_id).Delete();
+      if (breakpoints_.at(bp_id).Delete() < 0) {
+        std::cerr << "Failed to delete a breakpoint.\n";
+        return;
+      }
       breakpoints_.erase(bp_id);
       deleted_breakpoints.emplace_back(break_addr, bp_id);
     }
   }
   auto text = std::vector<std::uint8_t>(kMaxInsnSize * insn_count);
   for (auto i = std::size_t{0}; i < sizeof(text); ++i) {
+    errno = 0;
     text[i] = ptrace(PTRACE_PEEKTEXT, pid_, addr + i, nullptr);
+    if (errno) {
+      std::perror("ptrace");
+      return;
+    }
   }
   // Add back the breakpoints.
   for (auto [break_addr, bp_id] : deleted_breakpoints) {

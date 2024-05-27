@@ -9,13 +9,15 @@ class Breakpoint {
  public:
   /// @brief Removes the interrupt instruction by restoring the original data.
   /// @note Deleting a breakpoint twice may cause unexpected behavior.
-  void Delete();
+  /// @return `0` on success, `-1` on failure.
+  int Delete();
 
   std::uintptr_t addr() const {
     return addr_;
   }
 
   /// @note The breakpoint is immediately enabled.
+  /// @throw `std::runtime_error` if failed to enable the breakpoint.
   Breakpoint(pid_t pid, std::uintptr_t addr);
 
  private:
@@ -27,7 +29,8 @@ class Breakpoint {
 
   /// @brief Replace the data at the address with the breakpoint instruction
   /// (int3).
-  void Enable_();
+  /// @return `0` on success, `-1` on failure.
+  int Enable_();
 };
 
 #endif  // BREAKPOINT_HPP
