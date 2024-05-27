@@ -118,7 +118,7 @@ void Debugger::Run() {
 
 Debugger::Status Debugger::Load_(const char* program) {
   program_ = program;
-  if (SetTextSectionBounds_() < 0) {
+  if (SetTextSectionEnd_() < 0) {
     return Status::kError;
   }
   auto pid = fork();
@@ -406,7 +406,7 @@ void Debugger::Disassemble_(std::uintptr_t addr, std::size_t insn_count) const {
 
   auto insn_count_in_text_section = static_cast<std::size_t>(std::count_if(
       insn, insn + count,
-      [this](auto&& i) { return i.address < text_section_bounds_.end; }));
+      [this](auto&& i) { return i.address < text_section_end_; }));
   auto max_len = std::size_t{0};
   for (auto i = std::size_t{0}; i < insn_count_in_text_section; ++i) {
     max_len = std::max(max_len, static_cast<std::size_t>(insn[i].size));
@@ -462,7 +462,7 @@ int Debugger::CheckHasLoaded_() const {
   return -1;
 }
 
-int Debugger::SetTextSectionBounds_() {
+int Debugger::SetTextSectionEnd_() {
   auto fd = open(program_, O_RDONLY);
   if (fd < 0) {
     std::perror("open");
@@ -503,8 +503,7 @@ int Debugger::SetTextSectionBounds_() {
       reinterpret_cast<char*>(maddr + shdr[ehdr->e_shstrndx].sh_offset);
   for (auto i = std::size_t{0}; i < ehdr->e_shnum; ++i) {
     if (std::string_view{&shstrtab[shdr[i].sh_name]} == ".text") {
-      text_section_bounds_ = {shdr[i].sh_addr,
-                              shdr[i].sh_addr + shdr[i].sh_size};
+      text_section_end_ = shdr[i].sh_addr + shdr[i].sh_size;
       munmap(reinterpret_cast<void*>(maddr), st.st_size);
       close(fd);
       return 0;

@@ -18,13 +18,9 @@ class Debugger {
   Debugger(const char* program) : program_{program} {}
 
  private:
-  struct SectionBounds {
-    std::uintptr_t start;
-    std::uintptr_t end;
-  };
-
   const char* program_;
-  SectionBounds text_section_bounds_;
+  /// @note This is to stop disassembling address outside the text section.
+  std::uintptr_t text_section_end_{0};
   pid_t pid_{0};
   /// @note Giving each breakpoint a unique id to support easy deletion.
   /// @note `map` is used to traverse the breakpoints in order of their id.
@@ -89,7 +85,7 @@ class Debugger {
   /// @return `-1` if no program is loaded; `0` otherwise.
   int CheckHasLoaded_() const;
   /// @return `-1` on error; `0` otherwise.
-  int SetTextSectionBounds_();
+  int SetTextSectionEnd_();
 };
 
 #endif  // DEBUGGER_HPP
