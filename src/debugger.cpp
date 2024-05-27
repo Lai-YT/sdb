@@ -243,7 +243,7 @@ Debugger::Status Debugger::Continue_() {
 int Debugger::StepOverBp_() {
   auto ret = GetRip_();
   if (ret < 0) {
-    return static_cast<int>(Status::kError);
+    return Status::kError;
   }
   auto rip = static_cast<std::uintptr_t>(ret);
   if (addr_to_breakpoint_id_.count(rip)) {
@@ -254,10 +254,10 @@ int Debugger::StepOverBp_() {
     // is not aware of it.
     if (ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr) < 0) {
       std::perror("ptrace");
-      return static_cast<int>(Status::kError);
+      return Status::kError;
     }
     if (auto status = Wait_(); status != Status::kSuccess) {
-      return static_cast<int>(status) /* error or the program has exited */;
+      return status /* error or the program has exited */;
     }
     breakpoints_.emplace(bp_id, Breakpoint{pid_, rip});
     return 0 /* stepped over a breakpoint */;
@@ -332,7 +332,7 @@ int Debugger::Syscall_() {
     return -1;
   }
   if (auto status = Wait_(); status != Status::kSuccess) {
-    return static_cast<int>(status);
+    return status;
   }
   // The stop may be due to syscall or breakpoint.
   // If PC - 1 is a breakpoint, we know it's caused by the breakpoint.

@@ -37,7 +37,7 @@ class Debugger {
   //
 
   /// @brief An unified status code for functions to check and propagate.
-  enum class Status {
+  enum Status : int {
     kSuccess = 0,
     kError = -1,
     /// @brief Usually an error from `ptrace`.
