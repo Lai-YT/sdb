@@ -429,6 +429,9 @@ void Debugger::Disassemble_(std::uintptr_t addr, std::size_t insn_count) const {
               << insn[i].mnemonic << "\t" << insn[i].op_str << "\n";
   }
   cs_free(insn, count);
+  if (auto err = cs_close(&handle); err != CS_ERR_OK) {
+    std::cerr << "cs_close: " << cs_strerror(err) << "\n";
+  }
 }
 
 void Debugger::DisassembleFromRip_(std::size_t insn_count) const {
