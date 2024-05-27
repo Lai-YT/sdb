@@ -1,5 +1,4 @@
 #include <argp.h>
-#include <unistd.h>
 
 #include "debugger.hpp"
 
@@ -13,8 +12,15 @@ error_t ParseOpt(int opt, char* arg, struct argp_state* state);
 
 }  // namespace
 
+extern "C" {  // For argp.
+const char* argp_program_version = "sdb v1.0.0";
+}
+
 int main(int argc, char* argv[]) {
-  struct argp argp = {0, ParseOpt, "[PROGRAM]", 0, 0, 0, 0};
+  const char* doc =
+      "\nA simple x86-64 instruction-level debugger.\v"
+      "Copyright (c) 2024 Lai-YT under the MIT License.";
+  struct argp argp = {0, ParseOpt, "[PROGRAM]", doc, 0, 0, 0};
   auto args = Arguments{};
   argp_parse(&argp, argc, argv, ARGP_IN_ORDER, 0, &args);
   // Noreturn on error.
