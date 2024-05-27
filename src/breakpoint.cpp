@@ -31,12 +31,12 @@ int Breakpoint::Enable_() {
 int Breakpoint::Delete() {
   // The data may be modified by other commands, so we need to read it again.
   errno = 0;
-  auto data = ptrace(PTRACE_PEEKDATA, pid_, addr_, nullptr);
+  auto data = ptrace(PTRACE_PEEKTEXT, pid_, addr_, nullptr);
   if (errno) {
     return -1;
   }
   auto restored_data = ((data & ~0xff) | saved_data_);
-  if (ptrace(PTRACE_POKEDATA, pid_, addr_, restored_data) < 0) {
+  if (ptrace(PTRACE_POKETEXT, pid_, addr_, restored_data) < 0) {
     return -1;
   }
   return 0;
