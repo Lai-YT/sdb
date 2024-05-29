@@ -411,6 +411,16 @@ Debugger::Status Debugger::Patch_(std::uintptr_t addr, std::uint64_t data,
     return Status::kError;
   }
   std::cout << "** patch memory at 0x" << std::hex << addr << ".\n";
+  // However, the patch may overwrite a breakpoint. We need to check and re-add
+  // it.
+  for (auto [break_addr, bp_id] : addr_to_breakpoint_id_) {
+    if (addr <= break_addr && break_addr < addr + len) {
+      // NOTE: We do not call delete the breakpoint to recover the data,
+      // otherwise the patch will be lost.
+      breakpoints_.erase(bp_id);
+      breakpoints_.emplace(bp_id, Breakpoint{pid_, break_addr});
+    }
+  }
   return Status::kSuccess;
 }
 
