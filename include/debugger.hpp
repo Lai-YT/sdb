@@ -59,6 +59,7 @@ class Debugger {
   /// hitting a breakpoint.
   /// @return `-2` if the program has exited; `-1` on error; `1` stopped at a
   /// breakpoint; `0` otherwise. (In addition to Status, it may return `1`.)
+  /// @note Does not handled the case where the breakpoint is at a syscall.
   int Syscall_();
   /// @brief Patch the data at the address.
   /// @param len The length of the `data` in bytes; should be `1`, `2`, `4`, or
