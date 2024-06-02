@@ -393,6 +393,7 @@ Debugger::Status Debugger::Patch_(std::uintptr_t addr, std::uint64_t data,
   if (len != 1 && len != 2 && len != 4 && len != 8) {
     throw std::invalid_argument{"Invalid data length"};
   }
+  // Since len is guaranteed to be at most a word size, a single peek is enough.
   errno = 0;
   auto orig_data = ptrace(PTRACE_PEEKTEXT, pid_, addr, nullptr);
   if (errno) {
@@ -400,8 +401,12 @@ Debugger::Status Debugger::Patch_(std::uintptr_t addr, std::uint64_t data,
     return Status::kError;
   }
   auto mask = std::uint64_t{0};
+  // Mask the lower bits to 1.
   for (auto i = std::size_t{0}; i < len; ++i) {
-    mask |= 0xff << (i * 8);
+    auto bit_len = i * 8;
+    // NOTE: Using int, which is signed, will cause the shift to be undefined,
+    // leading to a wrong mask.
+    mask |= std::uint64_t{0xff} << bit_len;
   }
   auto new_data = (orig_data & ~mask) | (data & mask);
   errno = 0;
