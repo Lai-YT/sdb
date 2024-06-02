@@ -329,7 +329,7 @@ void Debugger::DeleteBreak_(int id) {
     }
     breakpoints_.erase(bp_itr);
     addr_to_breakpoint_id_.erase(addr);
-    std::cout << "** deleted breakpoint " << id << ".\n";
+    std::cout << "** delete breakpoint " << id << ".\n";
   } else {
     std::cout << "** breakpoint " << id << " does not exist.\n";
   }
@@ -410,7 +410,7 @@ Debugger::Status Debugger::Patch_(std::uintptr_t addr, std::uint64_t data,
     std::perror("ptrace");
     return Status::kError;
   }
-  std::cout << "** patch memory at 0x" << std::hex << addr << ".\n";
+  std::cout << "** patch memory at address 0x" << std::hex << addr << ".\n";
   // However, the patch may overwrite a breakpoint. We need to check and re-add
   // it.
   for (auto [break_addr, bp_id] : addr_to_breakpoint_id_) {
