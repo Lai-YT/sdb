@@ -13,7 +13,7 @@ error_t ParseOpt(int opt, char* arg, struct argp_state* state);
 }  // namespace
 
 extern "C" {  // For argp.
-const char* argp_program_version = "sdb v1.0.1";
+const char* argp_program_version = "sdb v1.0.2";
 }
 
 int main(int argc, char* argv[]) {
