@@ -42,7 +42,7 @@ void Debugger::Run() {
     DisassembleFromRip_(5);
   }
   char* line = nullptr;
-  while ((line = readline("(sbg) "))) {
+  while ((line = readline("(sdb) "))) {
     if (*line /* not blank */) {
       add_history(line);
     }
